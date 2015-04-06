@@ -1,6 +1,6 @@
 
 //
-// g++ -O3 -I. -msse3 ann_classifier.cpp -shared -o ann.dll
+// g++ -O3 -I. -mstackrealign -msse3 ann_classifier.cpp -shared -o ann_sse.dll
 // g++ -O3 -I. ann_classifier.cpp -shared -o ann.dll
 //
 
@@ -10,12 +10,14 @@
  *
  */
 
+
+
 #include <cstdio>
 #include <vector>
 #include <ann.hpp>
 
 
-typedef float DATATYPE;
+typedef double DATATYPE;
 
 extern "C" {
 
@@ -45,8 +47,13 @@ extern "C" {
 
         std::vector<int> sizes;
         sizes.push_back(41);
-        sizes.push_back(1024);
-        sizes.push_back(1024);
+        sizes.push_back(1111);
+        //sizes.push_back(31);
+        //sizes.push_back(11);
+        //sizes.push_back(51);
+        //sizes.push_back(51);
+        //for (int i = 0; i < 10; ++i)
+        //    sizes.push_back(51);
         sizes.push_back(1);
 
         ma::ann_leaner<DATATYPE>* ann = new ma::ann_leaner<DATATYPE>(sizes);
@@ -63,17 +70,20 @@ extern "C" {
         for (int e = 0; e < epoches; ++e) {
             cost = static_cast< ma::ann_leaner<DATATYPE>* >(ann)->fit_minibatch(X, Y, rows, *alpha, lambda);
 
-            if (prev_cost < cost) {
-                if (*alpha > 0.01)
+            if (isinf(cost) || isnan(cost) || prev_cost < cost) {
+                if (*alpha > 0.00001)
                     *alpha /= 2.;
             }
 
-            if (0 < e && 0 == (e % 100))
-                cout << setprecision(16) << cost << " [" << *alpha << "]" << endl;
+
+            if (0 < e && 0 == (e % 200))
+                cout << setprecision(16) << cost << " [" << *alpha << "]" << (prev_cost < cost ? ">>>" : "") << endl;
 
             if (*alpha == 0.) {
                 break;
             }
+
+            prev_cost = cost;
         }
         cout << setprecision(16) << cost << " [" << *alpha << "]" << endl;
     }
