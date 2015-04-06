@@ -79,7 +79,7 @@ public:
         random::rand<T>(ww_.get(), total_ww_size_);
 
         for (int i = 0; i < total_bb_size_; ++i)
-            bb_[i] = (bb_[i] - .5);
+            bb_[i] = (bb_[i] - .5) ;
 
         int ww_idx = 0;
         for (int l = 1; l < layers_num; ++l) {
@@ -194,8 +194,8 @@ public:
         int ww_idx = 0;
 
         for (int l = 1; l < layers_num; ++l) {
-            linalg::dot_m2v<T>(&ww_[ww_idx], S, &aa_[aa_idx], sizes_[l], sizes_[l - 1]);
-            linalg::sum_v2v<T>(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
+            linalg::dot_m2v(&ww_[ww_idx], S, &aa_[aa_idx], sizes_[l], sizes_[l - 1]);
+            linalg::sum_v2v(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
 
             if (l == (layers_num - 1)) {
                 //softmax(&aa_[aa_idx], sizes_[l]);
@@ -327,11 +327,15 @@ public:
         // update biases and weights
 
         for (int b = 0; b < total_bb_size_; ++b) {
-            bb_[b] -= alpha * bb_deriv_[b];
+            //bb_[b] -= alpha * bb_deriv_[b];
+            T s = bb_deriv_[b] > 0. ? 1. : -1.;
+            bb_[b] -= alpha * s;
         }
 
         for (int w = 0; w < total_ww_size_; ++w) {
-            ww_[w] -= alpha * ww_deriv_[w];
+            //ww_[w] -= alpha * ww_deriv_[w];
+            T s = ww_deriv_[w] > 0. ? 1. : -1.;
+            ww_[w] -= alpha * s;
         }
 
         return cost / rows + reg;
