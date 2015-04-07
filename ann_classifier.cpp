@@ -46,10 +46,9 @@ extern "C" {
         ma::random::seed();
 
         std::vector<int> sizes;
-        sizes.push_back(41);
-        sizes.push_back(1111);
-        //sizes.push_back(31);
-        //sizes.push_back(11);
+        sizes.push_back(78);
+        sizes.push_back(100);
+        //sizes.push_back(30);
         //sizes.push_back(51);
         //sizes.push_back(51);
         //for (int i = 0; i < 10; ++i)
@@ -71,7 +70,7 @@ extern "C" {
             cost = static_cast< ma::ann_leaner<DATATYPE>* >(ann)->fit_minibatch(X, Y, rows, *alpha, lambda);
 
             if (isinf(cost) || isnan(cost) || prev_cost < cost) {
-                if (*alpha > 0.00001)
+                //if (*alpha > 0.000000000001)
                     *alpha /= 2.;
             }
 
