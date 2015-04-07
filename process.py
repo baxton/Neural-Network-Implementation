@@ -17,11 +17,36 @@ ARR_LEN = 42
 ROWS = 137
 
 
+city_cat = None
+cafe_type_cat = None
 
-def save_dic(map, fname):
-    with open(path_data + fname + ".txt", "w+") as fout:
-        for k in map:
-            fout.write("%s,%2.16f%s" % (k, map[k], os.linesep))
+
+def fill_dicts(token_idx):
+    categories = {}
+    idx = 0
+
+    with open(path_data + fname_train, "r") as fin:
+        fin.readline()  # header
+        for line in fin:
+            line = line.strip()
+            tokens = line.split(',')
+
+            key = tokens[token_idx]
+            if not key in categories:
+                categories[key] = idx
+                idx += 1
+
+    return categories
+##
+
+def get_one_hot(category, key):
+    val = np.zeros((len(category),))
+    if key in category:
+        val[category[key]] = 1.
+    return val
+##
+
+
 
 
 def save_data(data, fname):
@@ -32,27 +57,23 @@ def save_stat(data, fname):
     means = data.mean(axis=0)
     mins = data.min(axis=0).flatten()
     maxs = data.max(axis=0).flatten()
+    std = data.std(axis=0).flatten()
     with open(path_data + fname + ".csv", "w+") as fout:
+        fout.write("ROWS: %d%s" % (data.shape[0], os.linesep))
+        fout.write("COLS: %d%s" % (data.shape[1], os.linesep))
+
         np.savetxt(fout, means.reshape((1, means.shape[0])), delimiter=',')
         np.savetxt(fout, mins.reshape((1, mins.shape[0])), delimiter=',')
         np.savetxt(fout, maxs.reshape((1, maxs.shape[0])), delimiter=',')
+        np.savetxt(fout, std.reshape((1, maxs.shape[0])), delimiter=',')
+
+
 
 
 
 def process_train():
 
-    current_val = 0
-    vals = sp.linspace(-.8, .8, num=500)
-    vals = vals[vals != 0.0]    # remove zero as it's a special value
-    sp.random.shuffle(vals)
-
-
-    data = np.zeros((ROWS, ARR_LEN))
-
-    city_map = {}
-    cafe_type_map = {}
-
-    row = 0
+    data = []
 
     with open(path_data + fname_train, "r") as fin:
         fin.readline()  # header
@@ -60,26 +81,22 @@ def process_train():
             line = line.strip()
             tokens = line.split(',')
 
+            row = []
+
             # date
             date_tokens = tokens[1].split('/')
-            date = int(date_tokens[2]) * 10000 + int(date_tokens[0]) * 100 + int(date_tokens[1])
+            date_y = date_tokens[2]
+            date_m = date_tokens[0]
+            date_d = date_tokens[1]
 
             # city type
             city_type = -1. if tokens[3] == "Big Cities" else 1.
 
             # city
-            city = 0
-            if not tokens[2] in city_map:
-                city_map[tokens[2]] = vals[current_val]
-                current_val += 1
-            city = city_map[tokens[2]]
+            city = get_one_hot(city_cat, tokens[2])
 
             # cafe type
-            cafe = 0
-            if not tokens[4] in cafe_type_map:
-                cafe_type_map[tokens[4]] = vals[current_val]
-                current_val += 1
-            cafe = cafe_type_map[tokens[4]]
+            cafe = get_one_hot(cafe_type_cat, tokens[4])
 
             # Pxxx
             PP = [float(v) for v in tokens[5:-1]]
@@ -89,19 +106,24 @@ def process_train():
 
 
             # reconstruct
-            data[row, :] = [date, city, city_type, cafe] + PP + [revenue]
+            row.append(date_y)
+            row.append(date_m)
+            row.append(date_d)
+            row.append(city_type)
+            row.extend(city)
+            row.extend(cafe)
+            row.extend(PP)
+            row.append(revenue)
 
-            row += 1
+            data.append(row)
 
-    return data, city_map, cafe_type_map
+    return np.array(data, dtype=np.float64)
 
 
 
-def process_test(city_map, cafe_type_map):
+def process_test():
 
-    data = np.zeros((100001, ARR_LEN))
-
-    row = 0
+    data = []
 
     with open(path_data + fname_test, "r") as fin:
         fin.readline()  # header
@@ -109,47 +131,68 @@ def process_test(city_map, cafe_type_map):
             line = line.strip()
             tokens = line.split(',')
 
+            row = []
+
             # id
             id = int(tokens[0])
 
             # date
             date_tokens = tokens[1].split('/')
-            date = int(date_tokens[2]) * 10000 + int(date_tokens[0]) * 100 + int(date_tokens[1])
+            date_y = date_tokens[2]
+            date_m = date_tokens[0]
+            date_d = date_tokens[1]
 
             # city type
             city_type = -1. if tokens[3] == "Big Cities" else 1.
 
             # city
-            city = 0
-            if tokens[2] in city_map:
-                city = city_map[tokens[2]]
+            city = get_one_hot(city_cat, tokens[2])
 
             # cafe type
-            cafe = 0
-            if tokens[4] in cafe_type_map:
-                cafe = cafe_type_map[tokens[4]]
+            cafe = get_one_hot(cafe_type_cat, tokens[4])
 
             # Pxxx
             PP = [float(v) for v in tokens[5:]]
 
             # reconstruct
-            data[row, :] = [date, city, city_type, cafe] + PP + [id]
+            row.append(date_y)
+            row.append(date_m)
+            row.append(date_d)
+            row.append(city_type)
+            row.extend(city)
+            row.extend(cafe)
+            row.extend(PP)
+            row.append(id)
 
-            row += 1
+            data.append(row)
 
-    return data
+    return np.array(data, dtype=np.float64)
 
 
 
 def main():
-    data, city_map, cafe_type_map = process_train()
+    #
+    # prepare categorical vars
+    #
+    global city_cat, cafe_type_cat
 
-    save_dic(city_map, "city_map")
-    save_dic(cafe_type_map, "cafe_type_map")
+    city_cat = fill_dicts(2)
+    cafe_type_cat = fill_dicts(4)
+
+    #
+    # encoding train set
+    #
+    data = process_train()
+
     save_stat(data, "train_stat")
     save_data(data, "train_data")
 
-    test_data = process_test(city_map, cafe_type_map)
+    #
+    # encoding test set
+    #
+    test_data = process_test()
+
+    save_stat(test_data, "test_stat")
     save_data(test_data, "test_data")
 
 
