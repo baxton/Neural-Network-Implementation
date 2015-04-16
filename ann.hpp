@@ -36,9 +36,11 @@ class ann_leaner {
     int total_ww_size_;
     int total_aa_size_;
 
+    bool regres_;
+
 
 public:
-    ann_leaner(const vector<int>& sizes) :
+    ann_leaner(const vector<int>& sizes, bool regres) :
         sizes_(sizes),
         aa_(),
         ww_(),
@@ -48,7 +50,8 @@ public:
         ww_deriv_(),
         total_bb_size_(0),
         total_ww_size_(0),
-        total_aa_size_(0)
+        total_aa_size_(0),
+        regres_(regres)
     {
         int layers_num = sizes_.size();
 
@@ -75,21 +78,24 @@ public:
 
 
         // initialise biases and weights with random values
-        random::rand<T>(bb_.get(), total_bb_size_);
-        random::rand<T>(ww_.get(), total_ww_size_);
+//        random::rand<T>(bb_.get(), total_bb_size_);
+//        random::rand<T>(ww_.get(), total_ww_size_);
+        random::randn<T>(bb_.get(), total_bb_size_, 0., .2);
+        random::randn<T>(ww_.get(), total_ww_size_, 0., .2);
 
+/*
         for (int i = 0; i < total_bb_size_; ++i)
-            bb_[i] = (bb_[i] - .5) ;
+            bb_[i] = (bb_[i] - .5) / 15;
 
         int ww_idx = 0;
         for (int l = 1; l < layers_num; ++l) {
             int size = sizes_[l] * sizes_[l-1];
             for (int i = 0; i < size; ++i) {
-                ww_[ww_idx + i] = (ww_[ww_idx + i] - .5);
+                ww_[ww_idx + i] = (ww_[ww_idx + i] - .5) / 15;
             }
             ww_idx += size;
         }
-
+*/
     }
 /*
     ann_leaner(const T* buffer) :
@@ -131,9 +137,9 @@ public:
     }
 
     // calculates sigmoid in place
-    void sigmoid(T* v, int size) {
+    void sigmoid(T* v, int size, T m = 1.) {
         for (int i = 0; i < size; ++i) {
-            v[i] = 1. / (1. + ::exp(-v[i]));
+            v[i] = 1. / (1. + ::exp(-v[i] * m));
 /*
             if (isnan(v[i]))
                 v[i] = 0.00000000000001;
@@ -144,6 +150,20 @@ public:
         }
     }
 
+
+    void tangh(T* v, int size) {
+        for (int i = 0; i < size; ++i) {
+            T tmp = 2. * v[i];
+            v[i] = (1. - ::exp(-tmp)) / (1. + ::exp(tmp));
+
+            if (isnan(v[i]))
+                v[i] = 0.00000000000001;
+
+            if (isinf(v[i]))
+                v[i] = .999999999999;
+
+        }
+    }
 
     void softmax(T* v, int size) {
         T sum_exp = 0;
@@ -198,11 +218,14 @@ public:
             linalg::sum_v2v(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
 
             if (l == (layers_num - 1)) {
-                //softmax(&aa_[aa_idx], sizes_[l]);
-                // linear
+                if (!regres_)
+                    softmax(&aa_[aa_idx], sizes_[l]);
+                // else linear
+
             }
             else {
-                sigmoid(&aa_[aa_idx], sizes_[l]);
+                //tangh(&aa_[aa_idx], sizes_[l]);
+                sigmoid(&aa_[aa_idx], sizes_[l], 1.);
             }
 
             S = &aa_[aa_idx];
@@ -235,8 +258,10 @@ public:
 
                 // calculate derivatives
                 for (int a = 0; a < sizes_[l_idx]; ++a) {
-                    cost += (aa_[aa_idx + a] - y[a]) * (aa_[aa_idx + a] - y[a]);
-                    //cost += logloss(aa_[aa_idx + a], y[a]);
+                    //if (regres_)
+                        cost += (aa_[aa_idx + a] - y[a]) * (aa_[aa_idx + a] - y[a]);
+                    //else
+                    //    cost += logloss(aa_[aa_idx + a], y[a]);
 
 
                     T delta = (aa_[aa_idx + a] - y[a]) ;
@@ -244,6 +269,7 @@ public:
                     bb_deriv_[aa_idx + a] += delta;
                 }
 
+                cost /= 2.;
                 cost /= sizes_[l_idx];
             }
             else {
@@ -319,23 +345,28 @@ public:
         T reg = 0.;
 
         for (int w = 0; w < total_ww_size_; ++w) {
-            reg += ww_[w] * ww_[w];
+            reg += lambda * ww_[w] * ww_[w] / (2. * rows);
             ww_deriv_[w] += lambda * ww_[w] / rows;
         }
-        reg = reg * lambda / (2. * rows);
 
         // update biases and weights
 
         for (int b = 0; b < total_bb_size_; ++b) {
-            //bb_[b] -= alpha * bb_deriv_[b];
-            T s = bb_deriv_[b] > 0. ? 1. : -1.;
-            bb_[b] -= alpha * s;
+//            if (regres_)
+                bb_[b] -= alpha * bb_deriv_[b];
+//            else {
+//                T s = bb_deriv_[b] >= 0. ? (bb_deriv_[b] == 0 ? 0. : 1.) : -1.;
+//                bb_[b] -= alpha * s;
+//            }
         }
 
         for (int w = 0; w < total_ww_size_; ++w) {
-            //ww_[w] -= alpha * ww_deriv_[w];
-            T s = ww_deriv_[w] > 0. ? 1. : -1.;
-            ww_[w] -= alpha * s;
+//            if (regres_)
+                ww_[w] -= alpha * ww_deriv_[w];
+//            else {
+//                T s = ww_deriv_[w] >= 0. ? (ww_deriv_[w] == 0. ? 0. : 1.) : -1.;
+//                ww_[w] -= alpha * s;
+//            }
         }
 
         return cost / rows + reg;
@@ -461,4 +492,5 @@ public:
 
 
 #endif
+
 
