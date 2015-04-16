@@ -7,10 +7,14 @@ import ctypes
 from array import array
 import datetime as dt
 
+#from sklearn.linear_model import LinearRegression
 
-ANN_DLL = ctypes.cdll.LoadLibrary(r"C:\Temp\test_python\RRP\scripts\ann_t\ann2.dll")
+
+#ANN_DLL = ctypes.cdll.LoadLibrary(r"/home/maxim/kaggle/RRP/scripts/ann/libann.so")
+ANN_DLL = ctypes.cdll.LoadLibrary(r"C:\Temp\test_python\RRP\scripts\ann_t\ann.dll")
 
 
+#path_data = "/home/maxim/kaggle/RRP/data/"
 path_data = "C:\\Temp\\test_python\\RRP\\data\\"
 
 fname_train = "train_data.csv"
@@ -18,9 +22,58 @@ fname_test  = "test_data.csv"
 
 REV_MEAN = 4453532.6131386859
 
-ARR_LEN = 42
+ARR_LEN = 44
 VEC_LEN = 41
 
+
+NULL = .0001
+
+Rmin = -9.5
+Rmax = 9.5
+
+
+
+def minmax(min1, max1, min2, max2, X):
+
+    if min1 == None or max1 == None:
+        min1 = X.min(axis=0)
+        max1 = X.max(axis=0)
+
+    k = (max2 - min2) / (max1 - min1)
+    X -= min1
+    X *= k
+    X += min2
+
+    return min1, max1, X
+
+
+
+
+
+def get_k_of_n(k, n):
+    numbers = np.array([0] * k, dtype=int)
+
+    for i in range(k):
+        numbers[i] = i
+
+    for i in range(k, n):
+        r = np.random.randint(0, i)
+        if r < k:
+            numbers[r] = i
+
+    return numbers
+
+
+def choice(arr, k):
+    n = len(arr)
+    indices = get_k_of_n(k, n)
+
+
+    if isinstance(arr, np.ndarray):
+        return arr[indices]
+
+    t = type(arr[0])
+    return np.array([arr[i] for i in indices], dtype=t)
 
 
 
@@ -29,214 +82,185 @@ def load(fname):
     return data.astype(np.float64)
 
 
+
 def augment_one(X, Y, idx, num=10):
     x = X[idx,:].copy()
     y = Y[idx,:].copy()
     for i in range(num):
-        for j in range(10):
-            rc = sp.random.randint(41, x.shape[0], 1)
-            x[rc] = 0.
+        for j in range(5):
+            rc = sp.random.randint(0, x.shape[0], 1)
+            x[rc] = NULL
         X = np.append(X, x.reshape((1,x.shape[0])), axis=0)
-        Y = np.append(Y, y.reshape((1,1)), axis=0)
+        Y = np.append(Y, y.reshape((1,y.shape[0])), axis=0)
     return X, Y
 
 
-def process3():
-    data = load(path_data + fname_train)
+
+
+def process3(fnum, train_data, test_data):
+    data = train_data
 
     Y = data[:,-1].copy()
 
     # preproc
     Y_LEN = 1
+
+    #ii = Y < 2000000.
+    #Y = Y[ii]
     Y = Y.reshape((Y.shape[0],Y_LEN))
-##    Y = np.append(Y, Y, axis=1)
-##    Y = np.append(Y, Y, axis=1)
 
-    Ymean = Y.mean()
-    Ymin = Y.min()
-    Ymax = Y.max()
-    Y -= Ymean
-    Y /= (Ymax - Ymin)
 
-    print "Y mean:", Ymean, "Ymin:", Ymin, "Ymax:", Ymax
+    Ymin, Ymax, Y = minmax(None, None, Rmin, Rmax, Y)
 
     X = data[:,:-1].copy()
+    #X = X[ii,0:]
 
-    Xmean = X.mean(axis=0)
-    Xmin = X.min(axis=0)
-    Xmax = X.max(axis=0)
-    X[:,0:3] -= Xmean[0:3]
-    X[:,41:] -= Xmean[41:]
-    X[:,0:3] /= (Xmax - Xmin)[0:3]
-    X[:,41:] /= (Xmax - Xmin)[41:]
+    X[ X == 0. ] = NULL
 
-    #
-    # aug
-    #
+    Xmin, Xmax, X = minmax(None, None, Rmin, Rmax, X)
 
-    X, Y = augment_one(X, Y, 0)
-    X, Y = augment_one(X, Y, 1)
-    X, Y = augment_one(X, Y, 5)
-    X, Y = augment_one(X, Y, 6)
-    X, Y = augment_one(X, Y, 8)
-    X, Y = augment_one(X, Y, 9)
-    X, Y = augment_one(X, Y, 11)
-    X, Y = augment_one(X, Y, 13)
-    X, Y = augment_one(X, Y, 16)
-    X, Y = augment_one(X, Y, 17)
-    X, Y = augment_one(X, Y, 18)
-    X, Y = augment_one(X, Y, 20)
-    X, Y = augment_one(X, Y, 24)
-    X, Y = augment_one(X, Y, 27)
-    X, Y = augment_one(X, Y, 28)
-    X, Y = augment_one(X, Y, 38)
-    X, Y = augment_one(X, Y, 40)
-    X, Y = augment_one(X, Y, 41)
-    X, Y = augment_one(X, Y, 42)
-    X, Y = augment_one(X, Y, 47)
-    X, Y = augment_one(X, Y, 48)
-    X, Y = augment_one(X, Y, 49)
-    X, Y = augment_one(X, Y, 53)
-    X, Y = augment_one(X, Y, 54)
-    X, Y = augment_one(X, Y, 55)
-    X, Y = augment_one(X, Y, 62)
-    X, Y = augment_one(X, Y, 74)
-    X, Y = augment_one(X, Y, 75)
-    X, Y = augment_one(X, Y, 76)
-    X, Y = augment_one(X, Y, 79)
-    X, Y = augment_one(X, Y, 83)
-    X, Y = augment_one(X, Y, 85)
-    X, Y = augment_one(X, Y, 87)
-    X, Y = augment_one(X, Y, 92)
-    X, Y = augment_one(X, Y, 96)
-    X, Y = augment_one(X, Y, 97)
-    X, Y = augment_one(X, Y, 99)
-    X, Y = augment_one(X, Y, 100)
-    X, Y = augment_one(X, Y, 101)
-    X, Y = augment_one(X, Y, 106)
-    X, Y = augment_one(X, Y, 115)
-    X, Y = augment_one(X, Y, 116)
-    X, Y = augment_one(X, Y, 124, 20)
-    X, Y = augment_one(X, Y, 125)
-    X, Y = augment_one(X, Y, 127)
-    X, Y = augment_one(X, Y, 132)
-    X, Y = augment_one(X, Y, 133)
-    X, Y = augment_one(X, Y, 135)
-    X, Y = augment_one(X, Y, 136)
-
-    for i in range(data.shape[0]):
-        X, Y = augment_one(X, Y, i, 25)
-
-    for i in range(1):
-        XA = X.copy()
-        for i in range(XA.shape[0]):
-            for j in range(4):
-                idx = sp.random.randint(41, X.shape[1], 1)
-                XA[i,idx] = Xmean[idx]
-        X = np.append(X, XA, axis=0)
-        Y = np.append(Y, Y, axis=0)
+    for i in range(Y.shape[0]):
+        X, Y = augment_one(X, Y, i, num=3)
 
     #
     #
     #
-
-    print "X mean:", Xmean, "Xmin:", Xmin, "Xmax:", Xmax
 
     N = Y.shape[0]
-    alpha = ctypes.c_double(.4)
 
 
-    ann = ANN_DLL.ann_create()
+
+    sizes = np.array([X.shape[1]] + [51]*33 + [1], dtype=np.int32)
+    ann = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(1))
+    ##lr = LinearRegression()
 
     train_set = range(N)
     sp.random.shuffle(train_set)
-    train_set = train_set[:int(N*.80)]
+    train_set = train_set[:int(N*.95)]
     test_set = [i for i in range(N) if i not in train_set]
-##    train_set = train_set
-##    test_set = train_set[:int(N*.3)]
 
-#    train_set = [43, 104, 54, 117, 118, 53, 119, 90, 47, 1, 49, 105, 55, 115, 130, 58, 11, 76, 82, 101, 37, 89, 70, 68, 72, 122, 66, 40, 19, 107, 106, 57, 6, 69, 45, 5, 71, 31, 61, 100, 13, 36, 110, 123, 128, 67, 95, 83, 102, 74, 103, 96, 50, 126, 93, 62, 65, 28, 46, 133, 84, 9, 3, 4, 42, 97, 94, 24, 136, 91, 79, 52, 109, 18, 113, 129, 108, 73, 33, 34, 60, 23, 120, 21, 86, 135, 59, 44, 121, 134, 112, 27, 63, 35, 14, 132, 88, 51, 38, 29, 12, 131, 30, 99, 124, 39, 32, 15, 81]
-#    test_set = [0, 2, 7, 8, 10, 16, 17, 20, 22, 25, 26, 41, 48, 56, 64, 75, 77, 78, 80, 85, 87, 92, 98, 111, 114, 116, 125, 127]
+    if 0 == len(test_set):
+        test_set = train_set
 
+    alpha = ctypes.c_double(.08)
     MBS = len(train_set)
 
-    prediction = np.array([0]*Y_LEN, dtype=np.float64)
+    prediction = np.array([0]*1, dtype=np.float64)
 
-    prev_test_cost = 99999999999
-    prev_cost_less_cnt = 0
 
-    for i in range(500):
+    for i in range(2000000):
         #indices = train_set[:MBS]
-        indices = sp.random.choice(train_set, MBS, replace=False)
-        sp.random.shuffle(indices)
+        indices = choice(train_set, MBS)
+
+        #MBS = len(train_set) if 0 == (i % 2) else len(train_set) / 3 * 2
 
         Ytmp = Y[indices,:].astype(np.float64)
         Xtmp = X[indices,:].astype(np.float64)
 
-        ANN_DLL.ann_fit(ctypes.c_void_p(ann), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(1), ctypes.c_int(250))
+        ANN_DLL.ann_fit(ctypes.c_void_p(ann), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(20), ctypes.c_int(5))
+#        alpha.value = .02
+        if i > 400000:
+            alpha.value = .00002
+        elif i > 250000:
+            alpha.value = .00004
+        elif i > 200000:
+            alpha.value = .00008
+        elif i > 140000:
+            alpha.value = .0001
+        elif i > 100000:
+            alpha.value = .0002
+        elif i > 80000:
+            alpha.value = .0004
+        elif i > 60000:
+            alpha.value = .0008
+        elif i > 50000:
+            alpha.value = .001
+        elif i > 40000:
+            alpha.value = .002
+        elif i > 30000:
+            alpha.value = .003
+        elif i > 20000:
+            alpha.value = .004
+        elif i > 10000:
+            alpha.value = .008
+        elif i > 1000:
+            alpha.value = .009
+        elif i > 40:
+            alpha.value = .01
+        elif i > 30:
+            alpha.value = .02
+        elif i > 20:
+            alpha.value = .04
+        elif i > 10:
+            alpha.value = .08
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        #lr.fit(Xtmp, Ytmp)
+
         print "MBS:", MBS, "ITER:", i
 
+
         ## COST
-        if 0 == (i % 10):
+        if i > 0 and 0 == (i % 100):
             cost = 0.
             for i in test_set:
                 x = X[i,:].astype(np.float64)
                 ANN_DLL.ann_predict(ctypes.c_void_p(ann), x.ctypes.data, prediction.ctypes.data, ctypes.c_int(1))
-                v = prediction[0] * (Ymax - Ymin) + Ymean
-                y = Y[i,0] * (Ymax - Ymin) + Ymean
+                m1, m2, v = minmax(Rmin, Rmax, Ymin, Ymax, prediction[0])
+                m1, m2, y = minmax(Rmin, Rmax, Ymin, Ymax, Y[i,0])
+                #v = prediction[0] * Ysum
+                #y = Y[i,0] * Ysum
                 cost += (v - y) * (v - y)
+                ##print prediction, v, "\t", y, "(", v - y , ")", i
             cost /= len(test_set)
             cost = np.sqrt(cost)
-            print "COST:", cost
+            print "COST:", cost, "Rmin/max", Rmin, Rmax
 
-
-##        if round(cost, 9) == round(prev_test_cost, 9):
-##            prev_cost_less_cnt += 1
-##            if prev_cost_less_cnt > 10:
+##            if cost > 2500000:
 ##                break
-##        else:
-##            prev_cost_less_cnt = 0
 
-##        if prev_test_cost < cost:
-##            alpha.value /= 2.;
-##        else:
-        if 4 >= sp.random.randint(0, 10, 1):
-            alpha.value *= sp.random.randint(2, 8, 1)
 
-        prev_test_cost = cost
+        if alpha.value == 0:
+            break;
+
+##        if 4 >= sp.random.randint(0, 10, 1):
+##            alpha.value *= sp.random.randint(2, 5, 1)
+
+
+        if True == os.path.exists("C:\\Temp\\test_python\\RRP\\scripts\\ann_t\\STOP.txt"):
+            break
+
         ##
 
 
     # regression
-    data = load(path_data + fname_test)
+    data = test_data
 
     X = data[:,:-1].copy()
 
-    # pre proc
-##    for i in range(X.shape[0]):
-##        date = int(X[i,0])
-##        y = date / 10000
-##        m = (date - y * 10000) / 100
-##        d = (date - y * 10000 - m * 100)
-##        date = dt.date(y, m, d)
-##        delta = (dn - date)
-##        X[i,0] = delta.days
-
-    X[:,0:3] -= Xmean[0:3]
-    X[:,41:] -= Xmean[41:]
-    X[:,0:3] /= (Xmax - Xmin)[0:3]
-    X[:,41:] /= (Xmax - Xmin)[41:]
-
+    m1, m2, X = minmax(Xmin, Xmax, Rmin, Rmax, X)
 
     vals = np.zeros((X.shape[0],))
 
-    with open(path_data + "..\\submission_t.txt", "w+") as fout:
+    with open(path_data + "../submission_AUG_a.02_l20_i5_INF_51x33_-9_9" + str(fnum) + ".txt", "w+") as fout:
         fout.write("Id,Prediction%s" % os.linesep)
         for row in range(data.shape[0]):
             x = X[row,:].astype(np.float64)
             ANN_DLL.ann_predict(ctypes.c_void_p(ann), x.ctypes.data, prediction.ctypes.data, ctypes.c_int(1))
-            v = prediction * (Ymax - Ymin) + Ymean
-            v = np.mean(v)
+            #v = prediction[0] * (Ymax - Ymin) # + Ymean
+            m1, m2, v = minmax(Rmin, Rmax, Ymin, Ymax, prediction[0])
 
             if 0 == (row % 5000):
                 print "ID:", data[row,-1], "val:", v
@@ -254,7 +278,19 @@ def process3():
 
 def main():
     sp.random.seed()
-    process3()
+
+    train = load(path_data + fname_train)
+    test = load(path_data + fname_test)
+
+
+    global Rmin, Rmax
+    Rmin = -9.
+    Rmax = 9.
+
+    for i in range(0, 1):
+        process3(i, train, test)
+#        Rmin *= 2.
+#        Rmax *= 2.
 
 
 
@@ -268,3 +304,4 @@ if __name__ == '__main__':
 #
 # Ymean = 4453532.49635; Ymin = -3.30366e+06; Ymax = 1.52434e+07
 #
+
