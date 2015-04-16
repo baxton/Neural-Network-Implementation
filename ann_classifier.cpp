@@ -1,5 +1,11 @@
 
 //
+// g++ -O3 -I. -msse3 ann_classifier.cpp -shared -o ann.dll
+// g++ -O3 -I. ann_classifier.cpp -shared -o ann.dll
+// g++ -O3 -I. ann_classifier.cpp -shared -o libann.so
+//
+
+//
 // g++ -O3 -I. -mstackrealign -msse3 ann_classifier.cpp -shared -o ann_sse.dll
 // g++ -O3 -I. ann_classifier.cpp -shared -o ann.dll
 //
@@ -42,20 +48,28 @@ extern "C" {
 */
 
 
-    void* ann_create() {
+    void* ann_create(const int* layers, int size, int regres) {
         ma::random::seed();
 
         std::vector<int> sizes;
-        sizes.push_back(78);
-        sizes.push_back(100);
-        //sizes.push_back(30);
-        //sizes.push_back(51);
-        //sizes.push_back(51);
-        //for (int i = 0; i < 10; ++i)
-        //    sizes.push_back(51);
-        sizes.push_back(1);
 
-        ma::ann_leaner<DATATYPE>* ann = new ma::ann_leaner<DATATYPE>(sizes);
+        for (int i = 0; i < size; ++i) {
+            sizes.push_back(layers[i]);
+        }
+
+//        sizes.push_back(45 - 1);
+//        sizes.push_back(220);
+//        sizes.push_back(220);
+//        sizes.push_back(333);
+//        sizes.push_back(222);
+//        sizes.push_back(111);
+//        sizes.push_back(91);
+//        sizes.push_back(48);
+//        for (int i = 0; i < 100; ++i)
+//            sizes.push_back(51);
+//        sizes.push_back(1);
+
+        ma::ann_leaner<DATATYPE>* ann = new ma::ann_leaner<DATATYPE>(sizes, regres);
         return ann;
     }
 
@@ -65,6 +79,8 @@ extern "C" {
         int cost_cnt = 0;
         DATATYPE prev_cost = 999.;
         DATATYPE cost = 0;
+
+        bool increaced = false;
 
         for (int e = 0; e < epoches; ++e) {
             cost = static_cast< ma::ann_leaner<DATATYPE>* >(ann)->fit_minibatch(X, Y, rows, *alpha, lambda);
@@ -83,6 +99,12 @@ extern "C" {
             }
 
             prev_cost = cost;
+
+            if (prev_cost < cost && 10. >= (cost - prev_cost) && !increaced) {
+                increaced = true;
+                epoches *= 2;
+            }
+
         }
         cout << setprecision(16) << cost << " [" << *alpha << "]" << endl;
     }
@@ -99,6 +121,7 @@ extern "C" {
 
 
 }
+
 
 
 
