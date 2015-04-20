@@ -38,6 +38,10 @@ class ann_leaner {
 
     bool regres_;
 
+    memory::ptr_vec<T> ww_mem_;
+    memory::ptr_vec<T> bb_mem_;
+
+
 
 public:
     ann_leaner(const vector<int>& sizes, bool regres) :
@@ -51,7 +55,9 @@ public:
         total_bb_size_(0),
         total_ww_size_(0),
         total_aa_size_(0),
-        regres_(regres)
+        regres_(regres),
+        ww_mem_(),
+        bb_mem_()
     {
         int layers_num = sizes_.size();
 
@@ -70,6 +76,9 @@ public:
         bb_.reset(new T[total_bb_size_]);
         ww_.reset(new T[total_ww_size_]);
 
+        bb_mem_.reset(new T[total_bb_size_]);
+        ww_mem_.reset(new T[total_ww_size_]);
+
         deltas_.reset(new T[total_aa_size_]);
 
         // partial derivatives
@@ -80,8 +89,8 @@ public:
         // initialise biases and weights with random values
 //        random::rand<T>(bb_.get(), total_bb_size_);
 //        random::rand<T>(ww_.get(), total_ww_size_);
-        random::randn<T>(bb_.get(), total_bb_size_, 0., .2);
-        random::randn<T>(ww_.get(), total_ww_size_, 0., .2);
+        random::randn<T>(bb_.get(), total_bb_size_, 0., .02);
+        random::randn<T>(ww_.get(), total_ww_size_, 0., .02);
 
 /*
         for (int i = 0; i < total_bb_size_; ++i)
@@ -113,6 +122,31 @@ public:
     {
     }
 */
+
+    void save_weights() {
+        linalg::copy(ww_mem_.get(), ww_.get(), total_ww_size_);
+        linalg::copy(bb_mem_.get(), bb_.get(), total_bb_size_);
+    }
+
+    void restore_weights() {
+        linalg::copy(ww_.get(), ww_mem_.get(), total_ww_size_);
+        linalg::copy(bb_.get(), bb_mem_.get(), total_bb_size_);
+    }
+
+
+    void random_shift() {
+        for (int i = 0; i < total_ww_size_; ++i) {
+            int tmp = random::randint(0, 10);
+            if (tmp <= 5)
+                random::randn(&ww_[i], 1, 0., .5);
+        }
+        for (int i = 0; i < total_bb_size_; ++i) {
+            int tmp = random::randint(0, 10);
+            if (tmp <= 5)
+                random::randn(&bb_[i], 1, 0., .5);
+        }
+    }
+
 
     template <class I>
     void print_vector(ostream& os, const I* vec, int size, const char* comment, const char* name) {
@@ -147,6 +181,13 @@ public:
             if (isinf(v[i]))
                 v[i] = .999999999999;
 */
+        }
+    }
+
+
+    void exp(T* v, int size) {
+        for (int i = 0; i < size; ++i) {
+            v[i] = ::exp(v[i]);
         }
     }
 
@@ -219,7 +260,8 @@ public:
 
             if (l == (layers_num - 1)) {
                 if (!regres_)
-                    softmax(&aa_[aa_idx], sizes_[l]);
+                    //softmax(&aa_[aa_idx], sizes_[l]);
+                    sigmoid(&aa_[aa_idx], sizes_[l], 1.);
                 // else linear
 
             }
