@@ -1,6 +1,7 @@
 
 
 import os
+import numpy as np
 
 
 path = "C:\\Temp\\test_python\\RRP\\"
@@ -11,27 +12,29 @@ def main():
 
     N = len(files)
 
-    fd = [open(path + fn, "r") for fn in files ]
-
-    for f in fd:
-        f.readline()
+    sums = np.zeros((100000,))
 
     with open(path + "sub_avr.txt", "w+") as fout:
         fout.write("Id,Prediction%s" % os.linesep)
 
-        try:
-            while True:
-                id = ''
-                v = 0.
-                for f in fd:
-                    line = f.readline()
-                    line = line.strip()
-                    tokens = line.split(',')
-                    id = tokens[0]
-                    v += float(tokens[1])
-                fout.write("%s,%2.16f%s" % (id, v/N, os.linesep))
-        except:
-            pass
+        for fn in files:
+            fin = open(path + fn, "r")
+
+            fin.readline()
+
+            for i in range(sums.shape[0]):
+                line = fin.readline()
+                line = line.strip()
+                tokens = line.split(',')
+                if len(tokens) == 2:
+                    sums[i] += float(tokens[1])
+                else:
+                    print fn, i, tokens
+
+        sums /= N
+
+        for i in range(sums.shape[0]):
+            fout.write("%s,%2.16f%s" % (i, sums[i], os.linesep))
 
 
 
