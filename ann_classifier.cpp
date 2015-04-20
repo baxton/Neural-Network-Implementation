@@ -1,7 +1,7 @@
 
 //
 // g++ -O3 -I. -msse3 ann_classifier.cpp -shared -o ann.dll
-// g++ -O3 -I. ann_classifier.cpp -shared -o ann.dll
+// g++ -O3 -I. ann_classifier.cpp -shared -o ann2.dll
 // g++ -O3 -I. ann_classifier.cpp -shared -o libann.so
 //
 
@@ -119,6 +119,17 @@ extern "C" {
     }
 
 
+    void ann_save(void* ann) {
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->save_weights();
+    }
+
+    void ann_restore(void* ann) {
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->restore_weights();
+    }
+
+    void ann_shift(void* ann) {
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->random_shift();
+    }
 
 }
 
