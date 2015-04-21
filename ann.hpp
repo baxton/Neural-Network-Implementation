@@ -89,8 +89,8 @@ public:
         // initialise biases and weights with random values
 //        random::rand<T>(bb_.get(), total_bb_size_);
 //        random::rand<T>(ww_.get(), total_ww_size_);
-        random::randn<T>(bb_.get(), total_bb_size_, 0., .02);
-        random::randn<T>(ww_.get(), total_ww_size_, 0., .02);
+        random::randn<T>(bb_.get(), total_bb_size_, 0., .1);
+        random::randn<T>(ww_.get(), total_ww_size_, 0., .1);
 
 /*
         for (int i = 0; i < total_bb_size_; ++i)
@@ -135,15 +135,20 @@ public:
 
 
     void random_shift() {
+        T tmp;
         for (int i = 0; i < total_ww_size_; ++i) {
             int tmp = random::randint(0, 10);
-            if (tmp <= 5)
-                random::randn(&ww_[i], 1, 0., .5);
+            if (tmp <= 3) {
+                random::randn(&tmp, 1, 0., .5);
+                ww_[i] += tmp;
+            }
         }
         for (int i = 0; i < total_bb_size_; ++i) {
             int tmp = random::randint(0, 10);
-            if (tmp <= 5)
-                random::randn(&bb_[i], 1, 0., .5);
+            if (tmp <= 3) {
+                random::randn(&tmp, 1, 0., .5);
+                bb_[i] += tmp;
+            }
         }
     }
 
@@ -260,10 +265,9 @@ public:
 
             if (l == (layers_num - 1)) {
                 if (!regres_)
-                    //softmax(&aa_[aa_idx], sizes_[l]);
-                    sigmoid(&aa_[aa_idx], sizes_[l], 1.);
+                    softmax(&aa_[aa_idx], sizes_[l]);
+                    //sigmoid(&aa_[aa_idx], sizes_[l], 1.);
                 // else linear
-
             }
             else {
                 //tangh(&aa_[aa_idx], sizes_[l]);
