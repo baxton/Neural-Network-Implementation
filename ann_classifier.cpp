@@ -77,7 +77,7 @@ extern "C" {
     void ann_fit(void* ann, const DATATYPE* X, const DATATYPE* Y, int rows, DATATYPE* alpha, DATATYPE lambda, int epoches) {
 
         int cost_cnt = 0;
-        DATATYPE prev_cost = 999.;
+        DATATYPE prev_cost = 99999999.;
         DATATYPE cost = 0;
 
         bool increaced = false;
@@ -86,8 +86,7 @@ extern "C" {
             cost = static_cast< ma::ann_leaner<DATATYPE>* >(ann)->fit_minibatch(X, Y, rows, *alpha, lambda);
 
             if (isinf(cost) || isnan(cost) || prev_cost < cost) {
-                //if (*alpha > 0.000000000001)
-                    *alpha /= 2.;
+                *alpha /= 2.;
             }
 
 
