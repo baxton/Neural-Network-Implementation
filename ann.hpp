@@ -87,24 +87,24 @@ public:
 
 
         // initialise biases and weights with random values
-//        random::rand<T>(bb_.get(), total_bb_size_);
-//        random::rand<T>(ww_.get(), total_ww_size_);
-        random::randn<T>(bb_.get(), total_bb_size_, 0., .1);
-        random::randn<T>(ww_.get(), total_ww_size_, 0., .1);
+        random::rand<T>(bb_.get(), total_bb_size_);
+        random::rand<T>(ww_.get(), total_ww_size_);
+//        random::randn<T>(bb_.get(), total_bb_size_, 0., 2.);
+//        random::randn<T>(ww_.get(), total_ww_size_, 0., 2.);
 
-/*
+
         for (int i = 0; i < total_bb_size_; ++i)
-            bb_[i] = (bb_[i] - .5) / 15;
+            bb_[i] = (bb_[i]) / 15;
 
         int ww_idx = 0;
         for (int l = 1; l < layers_num; ++l) {
             int size = sizes_[l] * sizes_[l-1];
             for (int i = 0; i < size; ++i) {
-                ww_[ww_idx + i] = (ww_[ww_idx + i] - .5) / 15;
+                ww_[ww_idx + i] = (ww_[ww_idx + i]) / 15;
             }
             ww_idx += size;
         }
-*/
+
     }
 /*
     ann_leaner(const T* buffer) :
@@ -264,10 +264,11 @@ public:
             linalg::sum_v2v(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
 
             if (l == (layers_num - 1)) {
-                if (!regres_)
-                    softmax(&aa_[aa_idx], sizes_[l]);
+                //if (!regres_)
+                    //softmax(&aa_[aa_idx], sizes_[l]);
                     //sigmoid(&aa_[aa_idx], sizes_[l], 1.);
                 // else linear
+                sigmoid(&aa_[aa_idx], sizes_[l], .5);
             }
             else {
                 //tangh(&aa_[aa_idx], sizes_[l]);
@@ -311,6 +312,10 @@ public:
 
 
                     T delta = (aa_[aa_idx + a] - y[a]) ;
+
+                    T sig_deriv = aa_[aa_idx + a] * (1. - aa_[aa_idx + a]);
+                    delta *= sig_deriv;
+
                     deltas_[aa_idx + a] = delta;
                     bb_deriv_[aa_idx + a] += delta;
                 }
@@ -388,12 +393,9 @@ public:
 
         average_deriv((T)rows);
 
-        T reg = 0.;
+        T reg = regularize(lambda, rows);
 
-        for (int w = 0; w < total_ww_size_; ++w) {
-            reg += lambda * ww_[w] * ww_[w] / (2. * rows);
-            ww_deriv_[w] += lambda * ww_[w] / rows;
-        }
+
 
         // update biases and weights
 
@@ -416,6 +418,18 @@ public:
         }
 
         return cost / rows + reg;
+    }
+
+
+    double regularize(double lambda, int rows) {
+        double reg = 0.;
+
+        for (int w = 0; w < total_ww_size_; ++w) {
+            reg += lambda * ww_[w] * ww_[w] / (2. * rows);
+            ww_deriv_[w] += lambda * ww_[w] / rows;
+        }
+
+        return reg;
     }
 
 
