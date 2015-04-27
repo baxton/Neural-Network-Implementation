@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 
 #ANN_DLL = ctypes.cdll.LoadLibrary(r"/home/maxim/kaggle/RRP/scripts/ann/libann.so")
-ANN_DLL = ctypes.cdll.LoadLibrary(r"C:\Temp\test_python\RRP\scripts\ann_t\redann.dll")
+ANN_DLL = ctypes.cdll.LoadLibrary(r"C:\Temp\test_python\RRP\scripts\ann_t\ann.dll")
 
 
 #path_data = "/home/maxim/kaggle/RRP/data/"
@@ -34,8 +34,12 @@ FX = None
 
 NULL = .0001
 
-Rmin = -9.5
-Rmax = 9.5
+Rmin = -10.5
+Rmax = 10.5
+
+YRmin = .3
+YRmax = .7
+
 
 x_beg = 0
 x_end = -1
@@ -129,7 +133,6 @@ def train_rf_for_outliers(train_data):
 
 
 def train_bias_remover(ann, X, Y, train_set):
-    print "Train bias remover"
     prediction = np.array([0],dtype=np.float64)
     Ytmp = Y.copy()
     for i in train_set:
@@ -140,24 +143,28 @@ def train_bias_remover(ann, X, Y, train_set):
 
     Ytmp = Ytmp[train_set].astype(np.float64)
     Xtmp = X[train_set].astype(np.float64)
+    MBS  = len(train_set)
+    alpha = ctypes.c_double(.8)
+
     Ytmp = np.append(Ytmp, Ytmp, axis=0)
     Xtmp = np.append(Xtmp, Xtmp, axis=0)
 
-    MBS  = Ytmp.shape[0]
-    alpha = ctypes.c_double(.008)
-    cost_one = ctypes.c_double(0.)
+    sizes = np.array([X.shape[1]] + [30]*1 + [1], dtype=np.int32)
+    ann_bias = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(1))
 
-    sizes = np.array([X.shape[1]] + [15]*2 + [1], dtype=np.int32)
-    ann_bias = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(3))
-
-    for i in range(200):
-        ANN_DLL.ann_fit(ctypes.c_void_p(ann_bias), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(X.shape[1]), ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(0.), ctypes.addressof(cost_one))
-        print "BR:", cost_one.value
+    for i in range(1):
+        ANN_DLL.ann_fit(ctypes.c_void_p(ann_bias), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(.125), ctypes.c_int(500))
 
     return ann_bias
 
 
 def process3(train_data):
+
+##    global outlier_detector_trained, rf_outliers, FX
+##    if not outlier_detector_trained:
+##        rf_outliers, FX = train_rf_for_outliers(train_data)
+##        outlier_detector_trained = True
+
 
     data = train_data
 
@@ -166,43 +173,29 @@ def process3(train_data):
     # preproc
     Y_LEN = 1
 
-    #ii = Y < 15000000.  # 15000000
-    ii = range(Y.shape[0])
+    ii = Y < 15000000.  # 15000000
+    #ii = range(Y.shape[0])
     Y = Y[ii]
     Y = Y.reshape((Y.shape[0],Y_LEN))
 
     N = Y.shape[0]
     train_set = range(N)
     sp.random.shuffle(train_set)
-    train_set = train_set[:int(N*.85)]
+    train_set = train_set[:int(N*7.)]
     test_set = [i for i in range(N) if i not in train_set]
 
 ##    test_set =  [23, 2, 27, 99, 80, 97, 114, 131, 124]
 ##    train_set =  [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 98, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 115, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 127, 128, 129, 130, 132, 133, 134]
 
-
-    global outlier_detector_trained, rf_outliers, FX
-##    if not outlier_detector_trained:
-##        rf_outliers, FX = train_rf_for_outliers(train_data[ii,:][train_set,:])
-##        outlier_detector_trained = True
-
-
     X = data[:,x_beg:x_end].copy()
-##    X = np.append(X, [[0]]*X.shape[0], axis=1)
+##    X = np.append(X, FX, axis=1)
     X = X[ii,0:]
-
-##    for i in range(X.shape[0]):
-##        p = rf_outliers.predict(X[i,:-1])
-##        X[i,-1] = p
-
-    #X = np.append(X, np.sin(X), axis=1)
-    X = np.append(X, np.log(1. + np.sin(X)), axis=1)
 
 #    for i in choice(range(Y.shape[0]), Y.shape[0] / 3 * 2):
 #    for i in range(Y.shape[0]):
 #        X, Y = augment_one(X, Y, i, num=1)
 
-    Ymin, Ymax, Y = minmax(None, None, Rmin, Rmax, Y)
+    Ymin, Ymax, Y = minmax(None, None, YRmin, YRmax, Y)
     Xmin, Xmax, X = minmax(None, None, Rmin, Rmax, X)
 
 
@@ -212,24 +205,22 @@ def process3(train_data):
 
 
 
-    sizes = np.array([X.shape[1]] + [55]*1 + [15] + [1], dtype=np.int32)
-    ann = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(5))
+    sizes = np.array([X.shape[1]] + [30]*1 + [1], dtype=np.int32)
+    ann = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(1))
     ##lr = LinearRegression()
 
     if 0 == len(test_set):
         test_set = train_set
 
-    cost_one = ctypes.c_double(0.)
-    prev_cost_one = 999999999.
-
-    l = 0
-    alpha = ctypes.c_double(.08)
-    MBS = len(train_set)
+    inner_iter = 3
+    l = .125
+    alpha = ctypes.c_double(.8)
+    MBS = int(len(train_set) * .85)
 
     prediction = np.array([0]*1, dtype=np.float64)
 
 
-    cost = 0.
+    cost = 999999999.
     best_cost = 999999999.
     prev_cost = 999999999.
     cost_cnt = 0
@@ -239,9 +230,9 @@ def process3(train_data):
     indices = train_set
     np.random.shuffle(indices)
 
-    for i in range(5000):
+    for i in range(2000):
         #indices = train_set[:MBS]
-        #indices = choice(train_set, MBS)
+        indices = choice(train_set, MBS)
 #        indices = np.append(indices, choice(train_set, MBS / 3 * 2))
 
         #MBS = len(train_set) if 0 == (i % 2) else len(train_set) / 3 * 2
@@ -249,52 +240,42 @@ def process3(train_data):
         Ytmp = Y[indices,:].astype(np.float64)
         Xtmp = X[indices,:].astype(np.float64)
 
-        ANN_DLL.ann_fit(ctypes.c_void_p(ann), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(X.shape[1]), ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(l), ctypes.addressof(cost_one))
-
-        print cost_one.value, "[", alpha.value, "]"
-        #if prev_cost_one < cost_one.value:
-        #    alpha.value /= 2.
-        prev_cost_one = cost_one.value
-
-        if i > 400000:
-            alpha.value = .00002
-        elif i > 250000:
-            alpha.value = .00004
-        elif i > 200000:
-            alpha.value = .00006
-        elif i > 140000:
-            alpha.value = .00008
-        elif i > 100000:
-            alpha.value = .0001
-        elif i > 80000:
-            alpha.value = .0002
-        elif i > 60000:
-            alpha.value = .0004
-        elif i > 50000:
-            alpha.value = .0006
-        elif i > 40000:
-            alpha.value = .0008
-        elif i > 30000:
-            alpha.value = .0015
-        elif i > 20000:
-            alpha.value = .001
-        elif i > 10000:
-            alpha.value = .002
-        elif i > 1000:
-            alpha.value = .04
-        elif i > 40:
-            alpha.value = .08
-        elif i > 30:
-            alpha.value = .08
-        elif i > 20:
-            alpha.value = .08
-        elif i > 10:
-            alpha.value = .08
-
-
-
-        if np.isnan(cost_one):
-            break
+        ANN_DLL.ann_fit(ctypes.c_void_p(ann), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(l), ctypes.c_int(inner_iter))
+#        alpha.value = .02
+##        if i > 400000:
+##            alpha.value = .00002
+##        elif i > 250000:
+##            alpha.value = .00004
+##        elif i > 200000:
+##            alpha.value = .00006
+##        elif i > 140000:
+##            alpha.value = .00008
+##        elif i > 100000:
+##            alpha.value = .0001
+##        elif i > 80000:
+##            alpha.value = .0002
+##        elif i > 60000:
+##            alpha.value = .0004
+##        elif i > 50000:
+##            alpha.value = .0006
+##        elif i > 40000:
+##            alpha.value = .0008
+##        elif i > 30000:
+##            alpha.value = .0015
+##        elif i > 20000:
+##            alpha.value = .001
+##        elif i > 10000:
+##            alpha.value = .002
+##        elif i > 1000:
+##            alpha.value = .004
+####        elif i > 40:
+####            alpha.value = .01
+####        elif i > 30:
+####            alpha.value = .02
+####        elif i > 20:
+####            alpha.value = .04
+##        elif i > 10:
+##            alpha.value = .009
 
 
         ## COST
@@ -305,24 +286,51 @@ def process3(train_data):
             for i in test_set:
                 x = X[i,:].astype(np.float64)
                 ANN_DLL.ann_predict(ctypes.c_void_p(ann), x.ctypes.data, prediction.ctypes.data, ctypes.c_int(1))
-                m1, m2, v = minmax(Rmin, Rmax, Ymin, Ymax, prediction[0])
-                m1, m2, y = minmax(Rmin, Rmax, Ymin, Ymax, Y[i,0])
+                m1, m2, v = minmax(YRmin, YRmax, Ymin, Ymax, prediction[0])
+                m1, m2, y = minmax(YRmin, YRmax, Ymin, Ymax, Y[i,0])
                 #v = prediction[0]
                 #y = Y[i,0]
                 cost += (v - y) * (v - y)
-                print prediction, v, "\t", y, "(", v - y , ")", i
+                ##print prediction, v, "\t", y, "(", v - y , ")", i
             cost /= len(test_set)
             cost = np.sqrt(cost)
             print "COST:", cost, "Rmin/max", Rmin, Rmax
 
-            if cost < best_cost:
-                best_cost = cost
-                weights_saved = True
-                ANN_DLL.ann_save(ctypes.c_void_p(ann))
+            if prev_cost < cost:
+                #alpha.value /= 2.
+                cost_cnt += 1
+                if cost_cnt > 10:
+                    #break
+                    #ANN_DLL.ann_shift(ctypes.c_void_p(ann))
+                    pass
+            else:
+                if cost < best_cost:
+                    best_cost = cost
+                    ANN_DLL.ann_save(ctypes.c_void_p(ann))
+                    weights_saved = True
+                cost_cnt = 0
+            prev_cost = cost
+
+##        if i > 0 and 0 == (i & 1000) or cost < 1100000 or cost > 1900000:
+##            ANN_DLL.ann_shift(ctypes.c_void_p(ann))
+##            l += .1
+##            alpha.value = 0.008
+##            #inner_iter += 1
+
+#            if cost < 900000. or cost > 1100000.:
+#                break
+
+
+
+            #break
 
 
         if alpha.value == 0:
             break;
+
+##        if 4 >= sp.random.randint(0, 10, 1):
+##            alpha.value *= sp.random.randint(2, 5, 1)
+
 
         if True == os.path.exists("C:\\Temp\\test_python\\RRP\\scripts\\ann_t\\STOP.txt"):
             break
@@ -344,8 +352,8 @@ def process3(train_data):
 
         ##ANN_DLL.ann_predict(ctypes.c_void_p(ann_bias), x.ctypes.data, pbias.ctypes.data, ctypes.c_int(1))
 
-        m1, m2, v = minmax(Rmin, Rmax, Ymin, Ymax, prediction[0] - pbias[0])
-        m1, m2, y = minmax(Rmin, Rmax, Ymin, Ymax, Y[i,0])
+        m1, m2, v = minmax(YRmin, YRmax, Ymin, Ymax, prediction[0] - pbias[0])
+        m1, m2, y = minmax(YRmin, YRmax, Ymin, Ymax, Y[i,0])
         #v = prediction[0]
         #y = Y[i,0]
         cost += (v - y) * (v - y)
@@ -368,11 +376,6 @@ def regression(ann, ann_bias, rf_outliers, test_data, Xmin, Xmax, Ymin, Ymax, fn
 ##    FX = rf_outliers.predict(X)
 ##    X = np.append(X, FX.reshape(FX.shape[0],1), axis=1)
 
-    #X = np.append(X, X**2, axis=1)
-    #X = np.append(X, np.sin(X), axis=1)
-    X = np.append(X, np.log(1. + np.sin(X)), axis=1)
-
-
     print "REG: Xmin/max", Xmin, Xmax
     m1, m2, X = minmax(Xmin, Xmax, Rmin, Rmax, X)
 
@@ -381,11 +384,7 @@ def regression(ann, ann_bias, rf_outliers, test_data, Xmin, Xmax, Ymin, Ymax, fn
     prediction = np.array([0]*1, dtype=np.float64)
     pbias = np.array([0], dtype=np.float64)
 
-    std = 0.
-    mean = 0.
-
-    fname = path_data + "../submission_%s_%f_%d.txt" % (pref, cost, fnum)
-    with open(fname, "w+") as fout:
+    with open(path_data + "../submission_%s_%f_%d.txt" % (pref, cost, fnum), "w+") as fout:
         fout.write("Id,Prediction%s" % os.linesep)
         for row in range(data.shape[0]):
             x = X[row,:].astype(np.float64)
@@ -394,7 +393,7 @@ def regression(ann, ann_bias, rf_outliers, test_data, Xmin, Xmax, Ymin, Ymax, fn
                 ANN_DLL.ann_predict(ctypes.c_void_p(ann_bias), x.ctypes.data, pbias.ctypes.data, ctypes.c_int(1))
 
             #v = prediction[0] * (Ymax - Ymin) # + Ymean
-            m1, m2, v = minmax(Rmin, Rmax, Ymin, Ymax, prediction[0] - pbias[0] / 2.)
+            m1, m2, v = minmax(YRmin, YRmax, Ymin, Ymax, prediction[0] - pbias[0])
             #v = prediction[0]
 
             if 0 == (row % 5000):
@@ -403,15 +402,8 @@ def regression(ann, ann_bias, rf_outliers, test_data, Xmin, Xmax, Ymin, Ymax, fn
 
             vals[row] = v
 
-
-        std = vals.std()
-        mean = vals.mean()
-
         print "ID:", data[row,-1], "val:", v
-        print "STD:", std, "MEAN:", mean, "NEGS:", len(vals[vals < 0.])
-
-    #if std <= 1000000. or 1700000. <= std or mean <= 3000000. or 4400000. <= mean:
-    #    os.remove(fname)
+        print "STD:", vals.std(), "MEAN:", vals.mean(), "NEGS:", len(vals[vals < 0.])
 
 
 
@@ -429,8 +421,8 @@ def main():
 
 
     global Rmin, Rmax
-    Rmin = -.5
-    Rmax = .5
+    #Rmin = -1.5
+    #Rmax = 1.5
 
     Xmin = 0.
     Xmax = 0.
@@ -440,11 +432,11 @@ def main():
     fnum = 0
     cost = 0.
 
-    N = 10
+    N = 1000
     cnt = 0.
     for i in range(0, N):
         ann, ann_bias, rf_outliers, tmp_cost, Xmin, Xmax, Ymin, Ymax = process3(train)
-        if not np.isnan(tmp_cost):  ## and tmp_cost < 1700000.:
+        if True:  # tmp_cost < 1000000:
             cost += tmp_cost
             regression(ann, ann_bias, rf_outliers, test, Xmin, Xmax, Ymin, Ymax, fnum, tmp_cost, pref)
             fnum += 1
