@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 
 #ANN_DLL = ctypes.cdll.LoadLibrary(r"/home/maxim/kaggle/RRP/scripts/ann/libann.so")
-ANN_DLL = ctypes.cdll.LoadLibrary(r"C:\Temp\test_python\RRP\scripts\ann_t\ann.dll")
+ANN_DLL = ctypes.cdll.LoadLibrary(r"C:\Temp\test_python\RRP\scripts\ann_t\ann2.dll")
 
 
 #path_data = "/home/maxim/kaggle/RRP/data/"
@@ -149,13 +149,71 @@ def train_bias_remover(ann, X, Y, train_set):
     Ytmp = np.append(Ytmp, Ytmp, axis=0)
     Xtmp = np.append(Xtmp, Xtmp, axis=0)
 
-    sizes = np.array([X.shape[1]] + [30]*1 + [1], dtype=np.int32)
+    sizes = np.array([X.shape[1]] + [35]*1 + [1], dtype=np.int32)
     ann_bias = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(1))
 
     for i in range(1):
         ANN_DLL.ann_fit(ctypes.c_void_p(ann_bias), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(.125), ctypes.c_int(500))
 
     return ann_bias
+
+def prep_data(X, p=1.):
+    tmp = X.copy()
+
+    #X = np.append(X, np.tan(tmp), axis=1)
+
+
+    #X = np.append(X, tmp**2, axis=1)
+    #X = np.append(X, tmp**3, axis=1)
+    #X = np.append(X, tmp**4, axis=1)
+    #X = np.append(X, tmp**5, axis=1)
+    tmp[ tmp == 0.] = .000001
+
+    #X = np.append(X, 1. / tmp, axis=1)
+
+##    X = np.append(X, np.sin(tmp), axis=1)
+
+##    S = 32
+##    N = 12
+##    m = []
+##    for r in range(X.shape[0]):
+##        row = []
+##        for c1 in range(S, S+N):
+##            for c2 in range(c1+1, S+N):
+##                row.append(tmp[r,c1] / tmp[r,c2])
+##
+##        m.append(row)
+##    X = np.append(X, np.array(m, dtype=np.float64), axis=1)
+
+##    P = 14  # 10, 13, 14, 15, 16, 18, 19, 34, 35, 36
+##    m = []
+##    for r in range(X.shape[0]):
+##        row = []
+##        n = tmp[r, P]
+##        for c2 in range(7, X.shape[1]):
+##            if c2 != P:
+##                row.append(n / tmp[r,c2]**2)
+##
+##        m.append(row)
+##    X = np.append(X, np.array(m, dtype=np.float64), axis=1)
+
+
+
+##    S = 25
+##    N = 35
+##    m = []
+##    for r in range(X.shape[0]):
+##        row = []
+##        for c1 in range(S, S+N):
+##            for c2 in range(c1, S+N):
+##                row.append(tmp[r,c1] * tmp[r,c2])
+##
+##        m.append(row)
+##    X = np.append(X, np.array(m, dtype=np.float64), axis=1)
+
+
+    #X = np.append(X, np.log(1. + np.sin(tmp)), axis=1)
+    return X
 
 
 def process3(train_data):
@@ -191,6 +249,9 @@ def process3(train_data):
 ##    X = np.append(X, FX, axis=1)
     X = X[ii,0:]
 
+
+    X = prep_data(X)
+
 #    for i in choice(range(Y.shape[0]), Y.shape[0] / 3 * 2):
 #    for i in range(Y.shape[0]):
 #        X, Y = augment_one(X, Y, i, num=1)
@@ -205,6 +266,7 @@ def process3(train_data):
 
 
 
+#    sizes = np.array([X.shape[1]] + [30]*1 + [1], dtype=np.int32)
     sizes = np.array([X.shape[1]] + [30]*1 + [1], dtype=np.int32)
     ann = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(1))
     ##lr = LinearRegression()
@@ -212,8 +274,13 @@ def process3(train_data):
     if 0 == len(test_set):
         test_set = train_set
 
-    inner_iter = 3
-    l = .125
+##    inner_iter = 3
+##    l = .125
+##    alpha = ctypes.c_double(8.)
+##    MBS = int(len(train_set) * .85)
+
+    inner_iter = 1
+    l = .25
     alpha = ctypes.c_double(.8)
     MBS = int(len(train_set) * .85)
 
@@ -230,9 +297,10 @@ def process3(train_data):
     indices = train_set
     np.random.shuffle(indices)
 
-    for i in range(2000):
+    for i in range(4000):
         #indices = train_set[:MBS]
         indices = choice(train_set, MBS)
+        ##np.append(indices, choice(train_set, MBS / 3))
 #        indices = np.append(indices, choice(train_set, MBS / 3 * 2))
 
         #MBS = len(train_set) if 0 == (i % 2) else len(train_set) / 3 * 2
@@ -241,7 +309,7 @@ def process3(train_data):
         Xtmp = X[indices,:].astype(np.float64)
 
         ANN_DLL.ann_fit(ctypes.c_void_p(ann), Xtmp.ctypes.data, Ytmp.ctypes.data, ctypes.c_int(MBS), ctypes.addressof(alpha), ctypes.c_double(l), ctypes.c_int(inner_iter))
-#        alpha.value = .02
+#        alpha.value = .008
 ##        if i > 400000:
 ##            alpha.value = .00002
 ##        elif i > 250000:
@@ -373,6 +441,8 @@ def regression(ann, ann_bias, rf_outliers, test_data, Xmin, Xmax, Ymin, Ymax, fn
 
     X = data[:,x_beg:x_end].copy()
 
+    X = prep_data(X)
+
 ##    FX = rf_outliers.predict(X)
 ##    X = np.append(X, FX.reshape(FX.shape[0],1), axis=1)
 
@@ -432,7 +502,7 @@ def main():
     fnum = 0
     cost = 0.
 
-    N = 1000
+    N = 1
     cnt = 0.
     for i in range(0, N):
         ann, ann_bias, rf_outliers, tmp_cost, Xmin, Xmax, Ymin, Ymax = process3(train)
