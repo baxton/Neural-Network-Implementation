@@ -41,6 +41,10 @@ class ann_leaner {
     memory::ptr_vec<T> ww_mem_;
     memory::ptr_vec<T> bb_mem_;
 
+    vector<T> dropout_bb_;
+    vector<T> dropout_ww_;
+    memory::ptr_vec<T> ww_tmp_;
+    memory::ptr_vec<T> bb_tmp_;
 
 
 public:
@@ -57,7 +61,11 @@ public:
         total_aa_size_(0),
         regres_(regres),
         ww_mem_(),
-        bb_mem_()
+        bb_mem_(),
+        dropout_bb_(),
+        dropout_ww_(),
+        ww_tmp_(),
+        bb_tmp_()
     {
         int layers_num = sizes_.size();
 
@@ -78,6 +86,9 @@ public:
 
         bb_mem_.reset(new T[total_bb_size_]);
         ww_mem_.reset(new T[total_ww_size_]);
+
+        ww_tmp_.reset(new T[total_ww_size_]);
+        bb_tmp_.reset(new T[total_bb_size_]);
 
         deltas_.reset(new T[total_aa_size_]);
 
@@ -105,6 +116,12 @@ public:
             ww_idx += size;
         }
 
+        for (int w = 0; w < total_ww_size_; ++w) {
+            dropout_ww_.push_back(1.);
+        }
+        for (int b = 0; b < total_bb_size_; ++b) {
+            dropout_bb_.push_back(1.);
+        }
     }
 /*
     ann_leaner(const T* buffer) :
@@ -260,8 +277,8 @@ public:
         int ww_idx = 0;
 
         for (int l = 1; l < layers_num; ++l) {
-            linalg::dot_m2v(&ww_[ww_idx], S, &aa_[aa_idx], sizes_[l], sizes_[l - 1]);
-            linalg::sum_v2v(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
+            linalg::dot_m2v(&ww_tmp_[ww_idx], S, &aa_[aa_idx], sizes_[l], sizes_[l - 1]);
+            linalg::sum_v2v(&aa_[aa_idx], &bb_tmp_[bb_idx], sizes_[l]);
 
             if (l == (layers_num - 1)) {
                 //if (!regres_)
@@ -276,6 +293,13 @@ public:
             }
 
             S = &aa_[aa_idx];
+
+            // dropout
+            if (l < (layers_num - 1)) {
+                for (int a = 0; a < sizes_[l]; ++a) {
+                    aa_[aa_idx + a] *= dropout_ww_[aa_idx + a];
+                }
+            }
 
             aa_idx += sizes_[l];
             bb_idx += sizes_[l];
@@ -334,7 +358,7 @@ public:
 
                     T delta = 0;
                     for (int a_next = 0; a_next < sizes_[l_idx + 1]; ++a_next) {
-                        delta += deltas_[aa_idx_next + a_next] * ww_[ww_idx + a_next * sizes_[l_idx] + a];
+                        delta += deltas_[aa_idx_next + a_next] * ww_tmp_[ww_idx + a_next * sizes_[l_idx] + a];
                     }
 
                     T sig_deriv = aa_[aa_idx + a] * (1. - aa_[aa_idx + a]);
@@ -370,6 +394,41 @@ public:
         return cost;
     }
 
+
+    void draw_M() {
+        int layers_num = sizes_.size();
+        //int to_out_size = sizes_[layers_num - 1];
+
+        double p = .0;
+        dropout_ww_.clear();
+        for (int w = 0; w < total_ww_size_; ++w) {
+            T r;
+            random::rand<T>(&r, 1);
+            if (p > r) {
+                ww_tmp_[w] = 0.;
+                dropout_ww_.push_back((T)0.);
+            }
+            else {
+                ww_tmp_[w] = ww_[w];
+                dropout_ww_.push_back((T)1.);
+            }
+        }
+
+        dropout_bb_.clear();
+        for (int b = 0; b < total_bb_size_; ++b) {
+            T r;
+            random::rand<T>(&r, 1);
+            if (p > r) {
+                bb_tmp_[b] = 0.;
+                dropout_bb_.push_back((T)0.);
+            }
+            else {
+                bb_tmp_[b] = bb_[b];
+                dropout_bb_.push_back((T)1.);
+            }
+        }
+    }
+
     void average_deriv(T sample_size) {
         linalg::div_v2s(bb_deriv_.get(), total_bb_size_, sample_size);
         linalg::div_v2s(ww_deriv_.get(), total_ww_size_, sample_size);
@@ -387,6 +446,9 @@ public:
         T cost = (T)0;
 
         for (int r = 0; r < rows; ++r) {
+            // dropout
+            draw_M();
+
             forward(&X[r * x_columns_num]);
             cost += backward(&X[r * x_columns_num], &Y[r * y_columns_num]);
         }
@@ -400,8 +462,10 @@ public:
         // update biases and weights
 
         for (int b = 0; b < total_bb_size_; ++b) {
-//            if (regres_)
+            if (1. == dropout_bb_[b])
                 bb_[b] -= alpha * bb_deriv_[b];
+
+
 //            else {
 //                T s = bb_deriv_[b] >= 0. ? (bb_deriv_[b] == 0 ? 0. : 1.) : -1.;
 //                bb_[b] -= alpha * s;
@@ -409,8 +473,10 @@ public:
         }
 
         for (int w = 0; w < total_ww_size_; ++w) {
-//            if (regres_)
+              if (1. == dropout_ww_[w])
                 ww_[w] -= alpha * ww_deriv_[w];
+
+
 //            else {
 //                T s = ww_deriv_[w] >= 0. ? (ww_deriv_[w] == 0. ? 0. : 1.) : -1.;
 //                ww_[w] -= alpha * s;
@@ -425,8 +491,8 @@ public:
         double reg = 0.;
 
         for (int w = 0; w < total_ww_size_; ++w) {
-            reg += lambda * ww_[w] * ww_[w] / (2. * rows);
-            ww_deriv_[w] += lambda * ww_[w] / rows;
+            reg += lambda * ww_tmp_[w] * ww_tmp_[w] / (2. * rows);
+            ww_deriv_[w] += lambda * ww_tmp_[w] / rows;
         }
 
         return reg;
