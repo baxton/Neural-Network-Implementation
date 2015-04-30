@@ -113,22 +113,22 @@ def augment_one(X, Y, idx, num=10):
 
 
 
-def train_rf_for_outliers(train_data):
+def train_rf_for_outliers(train_data, Y):
 
-    mean = train_data[:,-1].mean()
-    std = train_data[:,-1].std()
+    mean = Y.mean()
+    std = Y.std()
 
     rf = RandomForestClassifier(n_estimators=1000, bootstrap=False)
 
-    Y = np.zeros((train_data.shape[0],1))
+    res = np.zeros((train_data.shape[0],1))
     for i in range(train_data.shape[0]):
-        v = train_data[i, -1]
-        if np.sqrt((v - mean) ** 2) > std:
-            Y[i] = 1.
+        v = Y[i]
+        if np.sqrt((v - mean) ** 2) > (std * 1.):
+            res[i] = 1.
 
-    rf.fit(train_data[:,:-1], Y)
+    rf.fit(train_data, res)
 
-    return rf, Y
+    return rf, res
 
 
 
@@ -185,12 +185,24 @@ def prep_data(X, p=1.):
 ##        m.append(row)
 ##    X = np.append(X, np.array(m, dtype=np.float64), axis=1)
 
-##    P = 14  # 10, 13, 14, 15, 16, 18, 19, 34, 35, 36
+    P = 13  # 10, 13, 14, 15, 16, 18, 19, 34, 35, 36
+    m = []
+    for r in range(tmp.shape[0]):
+        row = []
+        n = tmp[r, P]
+        for c2 in range(7, tmp.shape[1]):
+            if c2 != P:
+                row.append(n / tmp[r,c2])
+
+        m.append(row)
+    X = np.append(X, np.array(m, dtype=np.float64), axis=1)
+
+##    P = 16  # 10, 13, 14, 15, 16, 18, 19, 34, 35, 36
 ##    m = []
-##    for r in range(X.shape[0]):
+##    for r in range(tmp.shape[0]):
 ##        row = []
 ##        n = tmp[r, P]
-##        for c2 in range(7, X.shape[1]):
+##        for c2 in range(7, tmp.shape[1]):
 ##            if c2 != P:
 ##                row.append(n / tmp[r,c2]**2)
 ##
@@ -212,16 +224,11 @@ def prep_data(X, p=1.):
 ##    X = np.append(X, np.array(m, dtype=np.float64), axis=1)
 
 
-    #X = np.append(X, np.log(1. + np.sin(tmp)), axis=1)
+#    X = np.append(X, np.log(1. + np.sin(tmp)), axis=1)
     return X
 
 
-def process3(train_data):
-
-##    global outlier_detector_trained, rf_outliers, FX
-##    if not outlier_detector_trained:
-##        rf_outliers, FX = train_rf_for_outliers(train_data)
-##        outlier_detector_trained = True
+def process3(train_data, out_id):
 
 
     data = train_data
@@ -231,23 +238,18 @@ def process3(train_data):
     # preproc
     Y_LEN = 1
 
-    ii = Y < 15000000.  # 15000000
-    #ii = range(Y.shape[0])
-    Y = Y[ii]
     Y = Y.reshape((Y.shape[0],Y_LEN))
 
     N = Y.shape[0]
-    train_set = range(N)
+    train_set = [n for n in range(N) if n != out_id]
     sp.random.shuffle(train_set)
-    train_set = train_set[:int(N*7.)]
-    test_set = [i for i in range(N) if i not in train_set]
+    test_set = [out_id]
 
 ##    test_set =  [23, 2, 27, 99, 80, 97, 114, 131, 124]
 ##    train_set =  [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 98, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 115, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 127, 128, 129, 130, 132, 133, 134]
 
     X = data[:,x_beg:x_end].copy()
 ##    X = np.append(X, FX, axis=1)
-    X = X[ii,0:]
 
 
     X = prep_data(X)
@@ -258,6 +260,21 @@ def process3(train_data):
 
     Ymin, Ymax, Y = minmax(None, None, YRmin, YRmax, Y)
     Xmin, Xmax, X = minmax(None, None, Rmin, Rmax, X)
+
+
+    global outlier_detector_trained, rf_outliers, FX
+    tmp = np.zeros((X.shape[0],1))
+    X = np.append(X, tmp, axis=1)
+
+    if not outlier_detector_trained:
+        rf_outliers, FX = train_rf_for_outliers(X[train_set,:], Y[train_set])
+        outlier_detector_trained = True
+
+        p = rf_outliers.predict(X[out_id,:])
+        X[out_id, -1] = p
+
+    for i, idx in enumerate(train_set):
+        X[idx] = FX[i]
 
 
     #
@@ -280,7 +297,7 @@ def process3(train_data):
 ##    MBS = int(len(train_set) * .85)
 
     inner_iter = 1
-    l = .25
+    l = .12
     alpha = ctypes.c_double(.8)
     MBS = int(len(train_set) * .85)
 
@@ -297,7 +314,7 @@ def process3(train_data):
     indices = train_set
     np.random.shuffle(indices)
 
-    for i in range(4000):
+    for i in range(2000):
         #indices = train_set[:MBS]
         indices = choice(train_set, MBS)
         ##np.append(indices, choice(train_set, MBS / 3))
@@ -362,7 +379,7 @@ def process3(train_data):
                 ##print prediction, v, "\t", y, "(", v - y , ")", i
             cost /= len(test_set)
             cost = np.sqrt(cost)
-            print "COST:", cost, "Rmin/max", Rmin, Rmax
+            print "COST:", cost, "Rmin/max", Rmin, Rmax, "out_id", out_id
 
             if prev_cost < cost:
                 #alpha.value /= 2.
@@ -443,11 +460,12 @@ def regression(ann, ann_bias, rf_outliers, test_data, Xmin, Xmax, Ymin, Ymax, fn
 
     X = prep_data(X)
 
+    print "REG: Xmin/max", Xmin, Xmax
+    m1, m2, X = minmax(Xmin, Xmax, Rmin, Rmax, X)
+
 ##    FX = rf_outliers.predict(X)
 ##    X = np.append(X, FX.reshape(FX.shape[0],1), axis=1)
 
-    print "REG: Xmin/max", Xmin, Xmax
-    m1, m2, X = minmax(Xmin, Xmax, Rmin, Rmax, X)
 
     vals = np.zeros((X.shape[0],))
 
@@ -483,11 +501,17 @@ def regression(ann, ann_bias, rf_outliers, test_data, Xmin, Xmax, Ymin, Ymax, fn
 def main():
     sp.random.seed()
 
-    #pref = sys.argv[1]
-    pref = "2nd"
+    pref = sys.argv[1]
+    #pref = "xxx"
 
     train = load(path_data + fname_train)
     test = load(path_data + fname_test)
+
+    ROWS_NUM = train.shape[0]
+
+    # remove outliers
+    ii = train[:,-1] < 15000000.
+    train = train[ii,:]
 
 
     global Rmin, Rmax
@@ -502,20 +526,28 @@ def main():
     fnum = 0
     cost = 0.
 
+    flog = open(pref + "_test.txt", "w+")
+
     N = 1
     cnt = 0.
     for i in range(0, N):
-        ann, ann_bias, rf_outliers, tmp_cost, Xmin, Xmax, Ymin, Ymax = process3(train)
-        if True:  # tmp_cost < 1000000:
-            cost += tmp_cost
-            regression(ann, ann_bias, rf_outliers, test, Xmin, Xmax, Ymin, Ymax, fnum, tmp_cost, pref)
-            fnum += 1
+        for r in range(train.shape[0]):
+            ann, ann_bias, rf_outliers, tmp_cost, Xmin, Xmax, Ymin, Ymax = process3(train, r)
+            flog.write("%d %f (%f)\n" % (r, tmp_cost, train[r,-1]))
+            flog.flush()
+
+            if True:  # tmp_cost < 1000000:
+                cost += tmp_cost
+                ##regression(ann, ann_bias, rf_outliers, test, Xmin, Xmax, Ymin, Ymax, fnum, tmp_cost, pref)
+                fnum += 1
 
         ANN_DLL.ann_free(ctypes.c_void_p(ann))
         #ANN_DLL.ann_free(ctypes.c_void_p(ann_bias))
 
         if True == os.path.exists("C:\\Temp\\test_python\\RRP\\scripts\\ann_t\\STOP.txt"):
             break
+    flog.write("COST: %f\n" % cost)
+    flog.close()
     cost /= fnum
 
     print "AVR COST:", cost
