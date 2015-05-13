@@ -41,10 +41,8 @@ class ann_leaner {
     memory::ptr_vec<T> ww_mem_;
     memory::ptr_vec<T> bb_mem_;
 
-    vector<T> dropout_bb_;
     vector<T> dropout_ww_;
     memory::ptr_vec<T> ww_tmp_;
-    memory::ptr_vec<T> bb_tmp_;
 
 
 public:
@@ -62,10 +60,8 @@ public:
         regres_(regres),
         ww_mem_(),
         bb_mem_(),
-        dropout_bb_(),
         dropout_ww_(),
-        ww_tmp_(),
-        bb_tmp_()
+        ww_tmp_()
     {
         int layers_num = sizes_.size();
 
@@ -88,7 +84,6 @@ public:
         ww_mem_.reset(new T[total_ww_size_]);
 
         ww_tmp_.reset(new T[total_ww_size_]);
-        bb_tmp_.reset(new T[total_bb_size_]);
 
         deltas_.reset(new T[total_aa_size_]);
 
@@ -100,28 +95,46 @@ public:
         // initialise biases and weights with random values
         random::rand<T>(bb_.get(), total_bb_size_);
         random::rand<T>(ww_.get(), total_ww_size_);
-//        random::randn<T>(bb_.get(), total_bb_size_, 0., 2.);
-//        random::randn<T>(ww_.get(), total_ww_size_, 0., 2.);
+//        random::randn<T>(bb_.get(), total_bb_size_, 0., .5);
+//        random::randn<T>(ww_.get(), total_ww_size_, 0., .5);
 
 
         for (int i = 0; i < total_bb_size_; ++i)
-            bb_[i] = (bb_[i]) / 15;
+            bb_[i] = (bb_[i] - .5) / 15.;
 
         int ww_idx = 0;
         for (int l = 1; l < layers_num; ++l) {
             int size = sizes_[l] * sizes_[l-1];
             for (int i = 0; i < size; ++i) {
-                ww_[ww_idx + i] = (ww_[ww_idx + i]) / 15;
+                ww_[ww_idx + i] = (ww_[ww_idx + i] - .5) / 15.;
             }
             ww_idx += size;
         }
 
-        for (int w = 0; w < total_ww_size_; ++w) {
-            dropout_ww_.push_back(1.);
+
+        // dropout
+        double p = .5;
+        ww_idx = 0;
+        for (int l = 1; l < layers_num; ++l) {
+            int size = sizes_[l] * sizes_[l-1];
+            for (int i = 0; i < size; ++i) {
+                if (l == (layers_num - 1)) {
+                    dropout_ww_.push_back(1.);
+                }
+                else {
+                    T r;
+                    random::rand<T>(&r, 1);
+                    if (p > r) {
+                        dropout_ww_.push_back(0.);
+                    }
+                    else {
+                        dropout_ww_.push_back(1.);
+                    }
+                }
+            }
+            ww_idx += size;
         }
-        for (int b = 0; b < total_bb_size_; ++b) {
-            dropout_bb_.push_back(1.);
-        }
+
     }
 /*
     ann_leaner(const T* buffer) :
@@ -278,14 +291,14 @@ public:
 
         for (int l = 1; l < layers_num; ++l) {
             linalg::dot_m2v(&ww_tmp_[ww_idx], S, &aa_[aa_idx], sizes_[l], sizes_[l - 1]);
-            linalg::sum_v2v(&aa_[aa_idx], &bb_tmp_[bb_idx], sizes_[l]);
+            linalg::sum_v2v(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
 
             if (l == (layers_num - 1)) {
                 //if (!regres_)
-                    //softmax(&aa_[aa_idx], sizes_[l]);
+                    softmax(&aa_[aa_idx], sizes_[l]);
                     //sigmoid(&aa_[aa_idx], sizes_[l], 1.);
                 // else linear
-                sigmoid(&aa_[aa_idx], sizes_[l], .5);
+                //sigmoid(&aa_[aa_idx], sizes_[l], 1.);
             }
             else {
                 //tangh(&aa_[aa_idx], sizes_[l]);
@@ -293,13 +306,6 @@ public:
             }
 
             S = &aa_[aa_idx];
-
-            // dropout
-            if (l < (layers_num - 1)) {
-                for (int a = 0; a < sizes_[l]; ++a) {
-                    aa_[aa_idx + a] *= dropout_ww_[aa_idx + a];
-                }
-            }
 
             aa_idx += sizes_[l];
             bb_idx += sizes_[l];
@@ -330,15 +336,15 @@ public:
                 // calculate derivatives
                 for (int a = 0; a < sizes_[l_idx]; ++a) {
                     //if (regres_)
-                        cost += (aa_[aa_idx + a] - y[a]) * (aa_[aa_idx + a] - y[a]);
+                    //    cost += (aa_[aa_idx + a] - y[a]) * (aa_[aa_idx + a] - y[a]);
                     //else
-                    //    cost += logloss(aa_[aa_idx + a], y[a]);
+                    cost += logloss(aa_[aa_idx + a], y[a]);
 
 
                     T delta = (aa_[aa_idx + a] - y[a]) ;
 
-                    T sig_deriv = aa_[aa_idx + a] * (1. - aa_[aa_idx + a]);
-                    delta *= sig_deriv;
+                    //T sig_deriv = aa_[aa_idx + a] * (1. - aa_[aa_idx + a]);
+                    //delta *= sig_deriv;
 
                     deltas_[aa_idx + a] = delta;
                     bb_deriv_[aa_idx + a] += delta;
@@ -396,36 +402,8 @@ public:
 
 
     void draw_M() {
-        int layers_num = sizes_.size();
-        //int to_out_size = sizes_[layers_num - 1];
-
-        double p = .0;
-        dropout_ww_.clear();
         for (int w = 0; w < total_ww_size_; ++w) {
-            T r;
-            random::rand<T>(&r, 1);
-            if (p > r) {
-                ww_tmp_[w] = 0.;
-                dropout_ww_.push_back((T)0.);
-            }
-            else {
-                ww_tmp_[w] = ww_[w];
-                dropout_ww_.push_back((T)1.);
-            }
-        }
-
-        dropout_bb_.clear();
-        for (int b = 0; b < total_bb_size_; ++b) {
-            T r;
-            random::rand<T>(&r, 1);
-            if (p > r) {
-                bb_tmp_[b] = 0.;
-                dropout_bb_.push_back((T)0.);
-            }
-            else {
-                bb_tmp_[b] = bb_[b];
-                dropout_bb_.push_back((T)1.);
-            }
+            ww_tmp_[w] = ww_[w] * dropout_ww_[w];
         }
     }
 
@@ -462,25 +440,12 @@ public:
         // update biases and weights
 
         for (int b = 0; b < total_bb_size_; ++b) {
-            if (1. == dropout_bb_[b])
-                bb_[b] -= alpha * bb_deriv_[b];
-
-
-//            else {
-//                T s = bb_deriv_[b] >= 0. ? (bb_deriv_[b] == 0 ? 0. : 1.) : -1.;
-//                bb_[b] -= alpha * s;
-//            }
+            bb_[b] -= alpha * bb_deriv_[b];
         }
 
         for (int w = 0; w < total_ww_size_; ++w) {
-              if (1. == dropout_ww_[w])
+            if (1. == dropout_ww_[w])
                 ww_[w] -= alpha * ww_deriv_[w];
-
-
-//            else {
-//                T s = ww_deriv_[w] >= 0. ? (ww_deriv_[w] == 0. ? 0. : 1.) : -1.;
-//                ww_[w] -= alpha * s;
-//            }
         }
 
         return cost / rows + reg;
