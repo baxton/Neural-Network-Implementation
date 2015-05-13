@@ -1,43 +1,60 @@
 
 
+
 import os
-import numpy as np
+
+path = "/home/maxim/kaggle/OTTO/"
+
+files = [
+'submission_128-128H50drop_0.544374_0.txt',
+'submission_normal_0.560924_0.txt',
+'submission_35HAVR_0.543265_0.txt',
+]
 
 
-path = "C:\\Temp\\test_python\\RRP\\"
+header = ""
+N = 0
+sums = {}
 
-files = [f for f in os.listdir(path) if "submission" in f]
+for f in files:
+    with open(path + f, "r") as fin:
+        if 0 == len(header):
+            header = fin.readline().strip()
+        else:
+            fin.readline().strip()
 
-def main():
+        for line in fin:
+            line = line.strip()
+            tokens = line.split(',')
+         
+            id = int(tokens[0])   
+            vals = [float(v) for v in tokens[1:]]
 
-    N = len(files)
+            if id in sums:
+                existing = sums[id]
+                for i in range(len(existing)):
+                    existing[i] += vals[i]
+            else:
+                sums[id] = vals
 
-    sums = np.zeros((100000,))
+        N += 1
 
-    with open(path + "sub_avr.txt", "w+") as fout:
-        fout.write("Id,Prediction%s" % os.linesep)
+fname = path + "sub_avr.txt"
+with open(fname, "w+") as fout:
+    fout.write("%s%s" % (header, os.linesep))
 
-        for fn in files:
-            fin = open(path + fn, "r")
+    keys = sums.keys()
+    keys.sort()
 
-            fin.readline()
-
-            for i in range(sums.shape[0]):
-                line = fin.readline()
-                line = line.strip()
-                tokens = line.split(',')
-                if len(tokens) == 2:
-                    sums[i] += float(tokens[1])
-                else:
-                    print fn, i, tokens
-
-        sums /= N
-
-        for i in range(sums.shape[0]):
-            fout.write("%s,%2.16f%s" % (i, sums[i], os.linesep))
+    for id in keys:
+        fout.write("%d" % id)
+        vals = sums[id]
+        for v in vals:
+            v /= N
+            fout.write(",%f" % v)
+        fout.write(os.linesep)
 
 
 
 
-if __name__ == '__main__':
-    main()
+
