@@ -14,14 +14,14 @@ FOR_LINUX = False
 
 OUTPUT_SIZE     = 9
 
-COST_EVERY_ITER = 40
-ITERATION_NUM   = 2000
+COST_EVERY_ITER = 30
+ITERATION_NUM   = 10000
 
 CV_SET_RATE     = .2
 
 TRAIN_SET_RATE  = .6
-CONST_ALPHA     = 2.
-BATCH_SIZE_RATE = .05
+CONST_ALPHA     = .2
+BATCH_SIZE_RATE = .5
 
 BIG_NUMBER      = 999999999.
 
@@ -36,7 +36,7 @@ path_scripts = path_base + "scripts" + delimiter + "ann" + delimiter
 
 
 ANN_DLL = ctypes.cdll.LoadLibrary(path_scripts + "libann.so") if FOR_LINUX else \
-          ctypes.cdll.LoadLibrary(path_scripts + "ann_70do.dll")
+          ctypes.cdll.LoadLibrary(path_scripts + "ann2.dll")
 
 
 fname_train = "train_data.csv"
@@ -68,6 +68,28 @@ def choice(arr, k):
 
     t = type(arr[0])
     return np.array([arr[i] for i in indices], dtype=t)
+
+
+
+def minmax(min1, max1, min2, max2, X, ignore=True):
+    if ignore:
+        return 0, 0, X
+
+    if min1 == None or max1 == None:
+        min1 = X.min(axis=0)
+        max1 = X.max(axis=0)
+
+
+    tmp = (max1 - min1)
+    tmp[tmp==0.] = 0.00000001
+
+    k = (max2 - min2) / tmp
+    X -= min1
+    X *= k
+    X += min2
+
+    return min1, max1, X
+
 
 
 
@@ -110,17 +132,17 @@ def prep_data(X):
 
 
 class ANN(object):
-    def __init__(self, sizes, train_data):
-        self.init(sizes, train_data)
+    def __init__(self, sizes, train_data, target, internal_iters=5):
+        self.init(sizes, train_data, target, internal_iters)
 
 
     def reset(self):
         ANN_DLL.ann_free(self.ann)
-        self.init(self.sizes, self.data)
+        self.init(self.sizes, self.data, self.Y, self.inner_iter)
 
 
 
-    def init(self, sizes, train_data):
+    def init(self, sizes, train_data, target, internal_iters):
         self.sizes = sizes
 
         self.ann = ANN_DLL.ann_create(sizes.ctypes.data, ctypes.c_int(sizes.shape[0]), ctypes.c_int(0))
@@ -130,12 +152,10 @@ class ANN(object):
         self.output_size = sizes[-1]
 
         # prepare target
-        self.Y = np.zeros((self.data.shape[0], self.output_size), dtype=DATA_TYPE)
-        for i in range(self.Y.shape[0]):
-            self.Y[i, int(self.data[i,-1])] = 1.
+        self.Y = target
 
         # prepare X matrix
-        self.X = self.data[:,1:-1]
+        self.X = self.data
 
         # split into train/test sets
         N = self.Y.shape[0]
@@ -145,7 +165,7 @@ class ANN(object):
         self.test_set = [i for i in range(N) if i not in self.train_set]
 
         # meta parameters
-        self.inner_iter = 3
+        self.inner_iter = internal_iters
         self.L = .0
         self.alpha = ctypes.c_double(CONST_ALPHA)
         self.MBS = int(len(self.train_set) * BATCH_SIZE_RATE)
@@ -189,6 +209,15 @@ class ANN(object):
         ANN_DLL.ann_save(ctypes.c_void_p(self.ann))
 
 
+    def set_output_scale(self, val):
+        ANN_DLL.ann_set_output_scale(ctypes.c_void_p(self.ann), ctypes.c_double(float(val)))
+
+    def get_output(self, l):
+        Y = np.zeros((self.sizes[-l],), dtype=DATA_TYPE)
+        ANN_DLL.ann_get_output(ctypes.c_void_p(self.ann), Y.ctypes.data, ctypes.c_int(2))
+        return Y
+
+
     def predict(self, x):
         ANN_DLL.ann_predict(ctypes.c_void_p(self.ann), x.ctypes.data, self.prediction.ctypes.data, ctypes.c_int(1))
         # to make it as close to the real estimation as possible
@@ -208,6 +237,138 @@ class ANN(object):
         return cost
 
 
+    def get_weights(self):
+        ww_size = 0
+        bb_size = 0
+        for l in range(1, len(self.sizes)):
+            ww_size += self.sizes[l] * self.sizes[l-1]
+            bb_size += self.sizes[l]
+
+        ww = np.zeros((ww_size,), dtype=DATA_TYPE)
+        bb = np.zeros((bb_size,), dtype=DATA_TYPE)
+
+        ANN_DLL.ann_get_weights(ctypes.c_void_p(self.ann), bb.ctypes.data, ww.ctypes.data)
+
+        return ww, bb
+
+
+    def get_1st_weights(self):
+        ww_size = self.sizes[0] * self.sizes[1]
+        bb_size = self.sizes[1]
+
+        ww, bb = self.get_weights()
+
+        return ww[:ww_size], bb[:bb_size], ww_size, bb_size
+
+
+    def set_weights(self, ww, bb):
+        ANN_DLL.ann_set_weights(ctypes.c_void_p(self.ann), bb.ctypes.data, ww.ctypes.data)
+
+
+#############################################################################
+##
+#############################################################################
+
+
+
+def feed_through_stack(ann_stack, x):
+    p = x
+    for ann in ann_stack:
+        ann.predict(x)
+        p = ann.get_output(2)
+        x = p
+    return p
+
+
+def ann_deep_pretrain(sizes, train_data, target):
+    hidden_num = len(sizes) - 3
+    if hidden_num <= 0:
+        raise Exception("ANN is not deep: %s" %sizes)
+
+    Xmax = train_data.max()
+
+    data = None
+    ann_steck = []
+    cur_ann = None
+    ann_num = 0
+
+    output_scale = 10.
+
+    global BATCH_SIZE_RATE
+    batch_size = BATCH_SIZE_RATE
+    BATCH_SIZE_RATE = 1.
+
+    while ann_num < hidden_num:
+        # current level to train
+        l = ann_num + 1
+        print "training level", l
+
+        if l > 1:
+            output_scale = 1.
+
+        # prepare data
+        if data == None:
+            data = train_data
+        else:
+            tmp = np.zeros((train_data.shape[0], sizes[l-1]), dtype=DATA_TYPE)
+            for idx, x in enumerate(train_data):
+                p = feed_through_stack(ann_steck, x)
+                tmp[idx,:] = p
+            data = tmp
+
+        cur_ann = ANN(np.array([sizes[l-1], sizes[l], sizes[l-1]], dtype=int), data, data, 10)
+        cur_ann.set_output_scale(output_scale)
+
+
+        N = 1000 if l == 1 else 50
+        for iter_num in range(N):
+            cur_ann.train(iter_num)
+
+            if l == 1 and output_scale < Xmax and iter_num > 0 and 0 == (iter_num % 10):
+                output_scale += 5.
+                cur_ann.set_output_scale(output_scale)
+                print "set scale:", output_scale
+
+
+        # add to the steck
+        cur_ann.set_output_scale(1.)
+        ann_steck.append(cur_ann)
+        ann_num += 1
+
+
+    # composing ww / bb
+    ww_size = 0
+    bb_size = 0
+    for l in range(1, len(sizes)):
+        ww_size += sizes[l] * sizes[l-1]
+        bb_size += sizes[l]
+
+    ww = sp.rand(ww_size)
+    bb = sp.rand(bb_size)
+
+    ww_idx = 0
+    bb_idx = 0
+    for ann in ann_steck:
+        ww_tmp, bb_tmp, ww_size, bb_size = ann.get_1st_weights()
+        ww[ww_idx : ww_idx + ww_size] = ww_tmp
+        bb[bb_idx : bb_idx + bb_size] = bb_tmp
+
+        ww_idx += ww_size
+        bb_idx += bb_size
+
+    BATCH_SIZE_RATE = batch_size
+
+    ann = ANN(sizes, train_data, target)
+    ann.set_weights(ww, bb)
+
+    return ann
+
+
+
+
+#############################################################################
+##
+#############################################################################
 
 
 
@@ -244,16 +405,18 @@ def process(anns, cv_data, cv_y):
                 best_cost = cv_cost
                 for nn in anns:
                     nn.save_nn()
+        if True == os.path.exists(path_scripts + "STOP.txt"):
+            break
+
 
     # last one
     cv_cost = calc_cv_cost(cv_data, cv_y, anns)
     print "AVR INTERMED COST (L)", cv_cost, "(best)", best_cost
 
     # check if we have a better solution
-    if cv_cost < best_cost:
-        best_cost = cv_cost
+    if cv_cost > best_cost:
         for nn in anns:
-            nn.save_nn()
+            nn.restore_nn()
 
         # recalc score
         cv_cost = calc_cv_cost(cv_data, cv_y, anns)
@@ -314,6 +477,7 @@ def main():
     train = load(path_data + fname_train)
     test = load(path_data + fname_test)
 
+
     ROWS    = train.shape[0]
     COLUMNS = train.shape[1] - 2        # -id and -Y
 
@@ -323,27 +487,25 @@ def main():
     cv_set = cv_set[:int(ROWS * CV_SET_RATE)]
     train_set = [i for i in range(ROWS) if i not in cv_set]
 
+    target = np.zeros((ROWS, OUTPUT_SIZE), dtype=DATA_TYPE)
+    for i in range(ROWS):
+        target[i, int(train[i,-1])] = 1.
 
-    cv_y = np.zeros((len(cv_set), OUTPUT_SIZE), dtype=DATA_TYPE)
-    for i, idx in enumerate(cv_set):
-        cv_y[i, int(train[idx,-1])] = 1.
-
+    cv_y = target[cv_set]
     cv_data = train[cv_set,1:-1]
 
 
-    # init ANNs
-    anns = [
-        ANN(np.array([COLUMNS, 66, 55, OUTPUT_SIZE],dtype=int), train[train_set]),
-        ANN(np.array([COLUMNS, 77, 66, 55, OUTPUT_SIZE],dtype=int), train[train_set]),
-        ANN(np.array([COLUMNS, 88, 66, 33, OUTPUT_SIZE],dtype=int), train[train_set]),
-        ANN(np.array([COLUMNS, 43, 22, OUTPUT_SIZE],dtype=int), train[train_set]),
-        ANN(np.array([COLUMNS, 35, 35, OUTPUT_SIZE],dtype=int), train[train_set]),
-        ANN(np.array([COLUMNS, 45, 45, 15, OUTPUT_SIZE],dtype=int), train[train_set]),
+##    # init ANNs
+##    anns = [
+##        ANN(np.array([COLUMNS, 80, 70, 60, 70, 80, OUTPUT_SIZE],dtype=int), train[train_set,1:-1], target[train_set]),
+##        ANN(np.array([COLUMNS, 80, 70, 60, 70, 80, OUTPUT_SIZE],dtype=int), train[train_set,1:-1], target[train_set]),
+##        #ANN(np.array([COLUMNS, 80, 70, OUTPUT_SIZE],dtype=int), train[train_set]),
+##
+##    ]
 
-        ANN(np.array([COLUMNS, 55, 55, 55, OUTPUT_SIZE],dtype=int), train[train_set]),
-        ANN(np.array([COLUMNS, 33, 33, 33, OUTPUT_SIZE],dtype=int), train[train_set]),
-        ANN(np.array([COLUMNS, 65, 55, OUTPUT_SIZE],dtype=int), train[train_set]),
-    ]
+    ann = ann_deep_pretrain(np.array([COLUMNS, 80, 20, 10, 9, OUTPUT_SIZE],dtype=int), train[train_set,1:-1], target[train_set])
+    anns = [ ann ]
+
 
     fnum = 0
     cost = 0.
