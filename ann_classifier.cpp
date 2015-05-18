@@ -57,18 +57,6 @@ extern "C" {
             sizes.push_back(layers[i]);
         }
 
-//        sizes.push_back(45 - 1);
-//        sizes.push_back(220);
-//        sizes.push_back(220);
-//        sizes.push_back(333);
-//        sizes.push_back(222);
-//        sizes.push_back(111);
-//        sizes.push_back(91);
-//        sizes.push_back(48);
-//        for (int i = 0; i < 100; ++i)
-//            sizes.push_back(51);
-//        sizes.push_back(1);
-
         ma::ann_leaner<DATATYPE>* ann = new ma::ann_leaner<DATATYPE>(sizes, regres);
         return ann;
     }
@@ -128,6 +116,26 @@ extern "C" {
 
     void ann_shift(void* ann) {
         static_cast< ma::ann_leaner<DATATYPE>* >(ann)->random_shift();
+    }
+
+
+    void ann_get_weights(void* ann, DATATYPE* bb, DATATYPE* ww) {
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->get_bb(bb);
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->get_ww(ww);
+    }
+
+    void ann_set_weights(void* ann, DATATYPE* bb, DATATYPE* ww) {
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->set_bb(bb);
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->set_ww(ww);
+    }
+
+    void ann_get_output(void* ann, DATATYPE* Y, int l) {
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->get_output(Y, l);
+    }
+
+
+    void ann_set_output_scale(void* ann, double val) {
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->set_output_scale(val);
     }
 
 }
